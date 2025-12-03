@@ -1,34 +1,30 @@
-========================================================================================================================================================
-**Projemizin agac semasi**
-
 tolerex/
-├── cmd/
-│   ├── leader/
-│   │   └── main.go            
-│   └── member/
-│       └── main.go           
-├── client/
-│   └── client.go              
+├── cmd/                        
+│   ├── leader/                 
+│   │   └── main.go
+│   └── member/                 
+│       └── main.go
 │
-├── internal/
-│   ├── server/
+├── client/                     
+│   └── client.go
+│
+├── internal/                   
+│   ├── server/                 
 │   │   ├── leader.go
 │   │   └── member.go
-│   ├── config/
-│   │   └── config.go         
-│   └── storage/
+│   ├── config/                 
+│   │   └── config.go
+│   └── storage/                
 │       ├── writer.go
 │       └── reader.go
 │
 ├── config/
-│   └── tolerance.conf        
+│   └── tolerance.conf         
 │
-├── proto/
+├── proto/                     
 │   ├── message.proto
-│   └── message.pb.go         
+│   └── message.pb.go
 │
-├── go.mod
+├── go.mod                      
 ├── go.sum
 └── README.md
-
-========================================================================================================================================================0
