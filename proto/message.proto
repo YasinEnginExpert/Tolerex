@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package proto;
+option go_package = "/gen;proto";
+
+// ==========================
+//  Message Definitions
+// ==========================
+
+// Mesajı diske yazmak için kullanılan veri
+message StoredMessage {
+    int32 id = 1;      // benzersiz mesaj kimliği
+    string text = 2;   // mesaj içeriği
+}
+
+// Retrieve operasyonunda sadece ID gönderilir
+message MessageID {
+    int32 id = 1;
+}
+
+// Store sonucunu dönen yapı
+message StoreResult {
+    bool ok = 1;       // işlem başarılı mı?
+    string err = 2;    // hata varsa açıklaması
+}
+
+// ==========================
+//  gRPC Storage Service
+// ==========================
+
+service StorageService {
+    // Lider mesajı gönderir, üye diske kaydeder
+    rpc Store(StoredMessage) returns (StoreResult);
+
+    // Lider belirli bir ID'yi ister, üye mesajı döner
+    rpc Retrieve(MessageID) returns (StoredMessage);
+}
