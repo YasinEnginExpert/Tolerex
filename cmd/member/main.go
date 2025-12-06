@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net"
 	"tolerex/internal/server"
@@ -10,22 +11,19 @@ import (
 )
 
 func main() {
+	port := flag.String("port", "5556", "gRPC port")
+	flag.Parse()
 
-	//---TCP portu dinlenmeye baslar---
-	listener, err := net.Listen("tcp", "5556")
+	listener, err := net.Listen("tcp", ":"+*port)
 	if err != nil {
 		log.Fatalf("Port dinlenemedi: %v", err)
 	}
 
-	//---Bos bir gRPC suncuusu olusturulur---
 	grpcServer := grpc.NewServer()
-
-	//---StorageService'si register edilir
 	proto.RegisterStorageServiceServer(grpcServer, &server.MemberServer{})
 
-	//---Server baslatilir
-	log.Println("Uye sunucu calisiyor :5556")
+	log.Printf("Üye sunucu çalışıyor :%s\n", *port)
 	if err := grpcServer.Serve(listener); err != nil {
-		log.Fatalf("gRPC baslatilamadi: %v", err)
+		log.Fatalf("gRPC başlatılamadı: %v", err)
 	}
 }
