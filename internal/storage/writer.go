@@ -6,8 +6,8 @@ import (
 	"strconv"
 )
 
-func WriteMessage(id int, text string) error {
-	dir := "message"
+func WriteMessage(baseDir string, id int, text string) error {
+	dir := filepath.Join(baseDir, "messaage")
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return err
 	}

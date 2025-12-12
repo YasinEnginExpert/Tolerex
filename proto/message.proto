@@ -3,6 +3,8 @@ syntax = "proto3";
 package proto;
 option go_package = "/gen;proto";
 
+import "google/protobuf/empty.proto";
+
 // ==========================
 //  Message Definitions
 // ==========================
@@ -24,14 +26,34 @@ message StoreResult {
     string err = 2;    // hata varsa açıklaması
 }
 
+message MemberInfo {
+    string address = 1; // Üyenin IP:port adresi
+}
+
+message RegisterReply {
+    bool ok = 1;
+    string err = 2;
+}
+
+message HeartbeatRequest  {
+    string address = 1;
+}
+
+
 // ==========================
 //  gRPC Storage Service
 // ==========================
-
 service StorageService {
     // Lider mesajı gönderir, üye diske kaydeder
     rpc Store(StoredMessage) returns (StoreResult);
 
     // Lider belirli bir ID'yi ister, üye mesajı döner
     rpc Retrieve(MessageID) returns (StoredMessage);
+
+    // Üye lider'e kendini kaydeder
+    rpc RegisterMember(MemberInfo) returns (RegisterReply);
+
+    // Üye hayatta olduğunu bildirir
+    rpc Heartbeat(HeartbeatRequest ) returns (google.protobuf.Empty);
 }
+

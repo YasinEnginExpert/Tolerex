@@ -9,12 +9,12 @@ import (
 )
 
 func main() {
-	// Liderin TCP adresi (gerekirse değiştir)
+	//---Liderin portu---
 	address := "localhost:6666"
 
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
-		fmt.Printf("Bağlantı hatası: %v\n", err)
+		fmt.Printf("Bağlanti hatasi: %v\n", err)
 		return
 	}
 	defer conn.Close()
@@ -31,17 +31,17 @@ func main() {
 			break
 		}
 
-		// Komutu sunucuya gönder
+		//---Komutu sunucuya gönder---
 		_, err := fmt.Fprintf(conn, "%s\n", line)
 		if err != nil {
-			fmt.Printf("Gönderim hatası: %v\n", err)
+			fmt.Printf("Gönderim hatasi: %v\n", err)
 			continue
 		}
 
-		// Sunucudan yanıt oku
+		//---Sunucudan yanıt oku---
 		response, err := bufio.NewReader(conn).ReadString('\n')
 		if err != nil {
-			fmt.Printf("Yanıt okunamadı: %v\n", err)
+			fmt.Printf("Yanit okunamadi: %v\n", err)
 			continue
 		}
 		fmt.Printf("Sunucu: %s", response)

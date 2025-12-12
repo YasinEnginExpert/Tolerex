@@ -11,6 +11,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -19,18 +20,30 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	StorageService_Store_FullMethodName    = "/proto.StorageService/Store"
-	StorageService_Retrieve_FullMethodName = "/proto.StorageService/Retrieve"
+	StorageService_Store_FullMethodName          = "/proto.StorageService/Store"
+	StorageService_Retrieve_FullMethodName       = "/proto.StorageService/Retrieve"
+	StorageService_RegisterMember_FullMethodName = "/proto.StorageService/RegisterMember"
+	StorageService_Heartbeat_FullMethodName      = "/proto.StorageService/Heartbeat"
 )
 
 // StorageServiceClient is the client API for StorageService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ==========================
+//
+//	gRPC Storage Service
+//
+// ==========================
 type StorageServiceClient interface {
 	// Lider mesajı gönderir, üye diske kaydeder
 	Store(ctx context.Context, in *StoredMessage, opts ...grpc.CallOption) (*StoreResult, error)
 	// Lider belirli bir ID'yi ister, üye mesajı döner
 	Retrieve(ctx context.Context, in *MessageID, opts ...grpc.CallOption) (*StoredMessage, error)
+	// Üye lider'e kendini kaydeder
+	RegisterMember(ctx context.Context, in *MemberInfo, opts ...grpc.CallOption) (*RegisterReply, error)
+	// Üye hayatta olduğunu bildirir
+	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type storageServiceClient struct {
@@ -61,14 +74,44 @@ func (c *storageServiceClient) Retrieve(ctx context.Context, in *MessageID, opts
 	return out, nil
 }
 
+func (c *storageServiceClient) RegisterMember(ctx context.Context, in *MemberInfo, opts ...grpc.CallOption) (*RegisterReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RegisterReply)
+	err := c.cc.Invoke(ctx, StorageService_RegisterMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageServiceClient) Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, StorageService_Heartbeat_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StorageServiceServer is the server API for StorageService service.
 // All implementations must embed UnimplementedStorageServiceServer
 // for forward compatibility.
+//
+// ==========================
+//
+//	gRPC Storage Service
+//
+// ==========================
 type StorageServiceServer interface {
 	// Lider mesajı gönderir, üye diske kaydeder
 	Store(context.Context, *StoredMessage) (*StoreResult, error)
 	// Lider belirli bir ID'yi ister, üye mesajı döner
 	Retrieve(context.Context, *MessageID) (*StoredMessage, error)
+	// Üye lider'e kendini kaydeder
+	RegisterMember(context.Context, *MemberInfo) (*RegisterReply, error)
+	// Üye hayatta olduğunu bildirir
+	Heartbeat(context.Context, *HeartbeatRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedStorageServiceServer()
 }
 
@@ -84,6 +127,12 @@ func (UnimplementedStorageServiceServer) Store(context.Context, *StoredMessage) 
 }
 func (UnimplementedStorageServiceServer) Retrieve(context.Context, *MessageID) (*StoredMessage, error) {
 	return nil, status.Error(codes.Unimplemented, "method Retrieve not implemented")
+}
+func (UnimplementedStorageServiceServer) RegisterMember(context.Context, *MemberInfo) (*RegisterReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method RegisterMember not implemented")
+}
+func (UnimplementedStorageServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method Heartbeat not implemented")
 }
 func (UnimplementedStorageServiceServer) mustEmbedUnimplementedStorageServiceServer() {}
 func (UnimplementedStorageServiceServer) testEmbeddedByValue()                        {}
@@ -142,6 +191,42 @@ func _StorageService_Retrieve_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageService_RegisterMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MemberInfo)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageServiceServer).RegisterMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageService_RegisterMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageServiceServer).RegisterMember(ctx, req.(*MemberInfo))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageService_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HeartbeatRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageServiceServer).Heartbeat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageService_Heartbeat_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageServiceServer).Heartbeat(ctx, req.(*HeartbeatRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StorageService_ServiceDesc is the grpc.ServiceDesc for StorageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -156,6 +241,14 @@ var StorageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Retrieve",
 			Handler:    _StorageService_Retrieve_Handler,
+		},
+		{
+			MethodName: "RegisterMember",
+			Handler:    _StorageService_RegisterMember_Handler,
+		},
+		{
+			MethodName: "Heartbeat",
+			Handler:    _StorageService_Heartbeat_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

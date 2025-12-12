@@ -1,60 +1,78 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"net"
 	"time"
 	"tolerex/internal/server"
+	proto "tolerex/proto/gen"
+
+	"google.golang.org/grpc"
 )
 
 func main() {
+	// --- Sabit portlar ---
+	grpcPort := ":5555" // Member → Leader gRPC iletişimi
+	tcpPort := ":6666"  // Client → Leader TCP SET/GET
 
-	//---TCP portu dinlenmeye baslar---
-	port := flag.String("port", "6666", "Lider TCP portu")
-	confPath := flag.String("conf", "config/tolerance.conf", "Tolerance config dosyasi")
-	memberCount := flag.Int("count", 4, "Üye sayısı")
-	flag.Parse()
+	//-------- Komut satırı argümanları alınır --------
+	confPath := "config/tolerance.conf" // Hata toleransı için dosya yolu
 
-	//Uye adresleri yukle
-	members := generateMemberPorts(5555, *memberCount)
+	//-------- Baslangıcta uye yok --------
+	members := []string{}
 
-	// Lider sunucuyu başlat
-	leader, err := server.NewLeaderServer(members, *confPath)
+	//-------- Lider sunucu başlatılır --------
+	leader, err := server.NewLeaderServer(members, confPath)
+	leader.DataDir = "data/leader"
+	if err != nil {
+		log.Fatalf("Lider sunucu baslatilamadi: %v", err)
 
-	// Üye durumlarını periyodik bastır
+	}
+
+	leader.StartHeartbeatWatcher()
+
+	// --- gRPC Server ---
 	go func() {
-		for {
-			time.Sleep(15 * time.Second)
-			leader.PrintMemberStats()
+		lis, err := net.Listen("tcp", grpcPort)
+		if err != nil {
+			log.Fatalf("[FATAL] Failed to start gRPC server: %v", err)
+		}
+
+		grpcServer := grpc.NewServer()
+		proto.RegisterStorageServiceServer(grpcServer, leader)
+
+		log.Printf("[INFO] Leader gRPC server listening on %s\n", grpcPort)
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("[FATAL] gRPC server error: %v", err)
 		}
 	}()
 
-	//---TCP sunucusu aç---
-	address := ":" + *port
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		log.Fatalf("Lider TCP başlatılamadı: %v", err)
-	}
-	defer listener.Close()
-	fmt.Printf("Lider %s portunda dinliyor...\n", address)
-
-	//---İstemci bağlantılarını dinle---
-	for {
-		conn, err := listener.Accept()
+	// --- TCP Server (Client SET/GET) ---
+	go func() {
+		listener, err := net.Listen("tcp", tcpPort)
 		if err != nil {
-			log.Printf("Bağlantı hatası: %v", err)
-			continue
+			log.Fatalf("[FATAL] Failed to start TCP server: %v", err)
 		}
-		go leader.HandleClient(conn) // Her bağlantı ayrı goroutine
+		defer listener.Close()
+
+		fmt.Printf("[INFO] Leader TCP server listening on %s\n", tcpPort)
+
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				log.Printf("[WARN] Incoming TCP connection failed: %v", err)
+				continue
+			}
+			go leader.HandleClient(conn)
+		}
+	}()
+
+	// --- Üye istatistiklerini yazdır ---
+	for {
+		time.Sleep(30 * time.Second)
+		leader.PrintMemberStats()
 	}
 }
 
-func generateMemberPorts(startPort, count int) []string {
-	var members []string
-	for i := 0; i < count; i++ {
-		members = append(members, fmt.Sprintf("localhost:%d", startPort+i))
-	}
-	return members
-}
+// go run cmd/leader/main.go

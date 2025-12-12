@@ -1,0 +1,3 @@
+go run cmd/leader/main.go
+
+go run cmd/member/main.go -port=5556

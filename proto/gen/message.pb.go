@@ -9,6 +9,7 @@ package proto
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -172,11 +173,151 @@ func (x *StoreResult) GetErr() string {
 	return ""
 }
 
+type MemberInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Address       string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"` // Üyenin IP:port adresi
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MemberInfo) Reset() {
+	*x = MemberInfo{}
+	mi := &file_message_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MemberInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MemberInfo) ProtoMessage() {}
+
+func (x *MemberInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_message_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MemberInfo.ProtoReflect.Descriptor instead.
+func (*MemberInfo) Descriptor() ([]byte, []int) {
+	return file_message_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *MemberInfo) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+type RegisterReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Err           string                 `protobuf:"bytes,2,opt,name=err,proto3" json:"err,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterReply) Reset() {
+	*x = RegisterReply{}
+	mi := &file_message_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterReply) ProtoMessage() {}
+
+func (x *RegisterReply) ProtoReflect() protoreflect.Message {
+	mi := &file_message_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterReply.ProtoReflect.Descriptor instead.
+func (*RegisterReply) Descriptor() ([]byte, []int) {
+	return file_message_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *RegisterReply) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *RegisterReply) GetErr() string {
+	if x != nil {
+		return x.Err
+	}
+	return ""
+}
+
+type HeartbeatRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Address       string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HeartbeatRequest) Reset() {
+	*x = HeartbeatRequest{}
+	mi := &file_message_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HeartbeatRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HeartbeatRequest) ProtoMessage() {}
+
+func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_message_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
+func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
+	return file_message_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *HeartbeatRequest) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
 var File_message_proto protoreflect.FileDescriptor
 
 const file_message_proto_rawDesc = "" +
 	"\n" +
-	"\rmessage.proto\x12\x05proto\"3\n" +
+	"\rmessage.proto\x12\x05proto\x1a\x1bgoogle/protobuf/empty.proto\"3\n" +
 	"\rStoredMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\"\x1b\n" +
@@ -184,10 +325,20 @@ const file_message_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\x05R\x02id\"/\n" +
 	"\vStoreResult\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x10\n" +
-	"\x03err\x18\x02 \x01(\tR\x03err2w\n" +
+	"\x03err\x18\x02 \x01(\tR\x03err\"&\n" +
+	"\n" +
+	"MemberInfo\x12\x18\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\"1\n" +
+	"\rRegisterReply\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x10\n" +
+	"\x03err\x18\x02 \x01(\tR\x03err\",\n" +
+	"\x10HeartbeatRequest\x12\x18\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress2\xf0\x01\n" +
 	"\x0eStorageService\x121\n" +
 	"\x05Store\x12\x14.proto.StoredMessage\x1a\x12.proto.StoreResult\x122\n" +
-	"\bRetrieve\x12\x10.proto.MessageID\x1a\x14.proto.StoredMessageB\fZ\n" +
+	"\bRetrieve\x12\x10.proto.MessageID\x1a\x14.proto.StoredMessage\x129\n" +
+	"\x0eRegisterMember\x12\x11.proto.MemberInfo\x1a\x14.proto.RegisterReply\x12<\n" +
+	"\tHeartbeat\x12\x17.proto.HeartbeatRequest\x1a\x16.google.protobuf.EmptyB\fZ\n" +
 	"/gen;protob\x06proto3"
 
 var (
@@ -202,19 +353,27 @@ func file_message_proto_rawDescGZIP() []byte {
 	return file_message_proto_rawDescData
 }
 
-var file_message_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_message_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_message_proto_goTypes = []any{
-	(*StoredMessage)(nil), // 0: proto.StoredMessage
-	(*MessageID)(nil),     // 1: proto.MessageID
-	(*StoreResult)(nil),   // 2: proto.StoreResult
+	(*StoredMessage)(nil),    // 0: proto.StoredMessage
+	(*MessageID)(nil),        // 1: proto.MessageID
+	(*StoreResult)(nil),      // 2: proto.StoreResult
+	(*MemberInfo)(nil),       // 3: proto.MemberInfo
+	(*RegisterReply)(nil),    // 4: proto.RegisterReply
+	(*HeartbeatRequest)(nil), // 5: proto.HeartbeatRequest
+	(*emptypb.Empty)(nil),    // 6: google.protobuf.Empty
 }
 var file_message_proto_depIdxs = []int32{
 	0, // 0: proto.StorageService.Store:input_type -> proto.StoredMessage
 	1, // 1: proto.StorageService.Retrieve:input_type -> proto.MessageID
-	2, // 2: proto.StorageService.Store:output_type -> proto.StoreResult
-	0, // 3: proto.StorageService.Retrieve:output_type -> proto.StoredMessage
-	2, // [2:4] is the sub-list for method output_type
-	0, // [0:2] is the sub-list for method input_type
+	3, // 2: proto.StorageService.RegisterMember:input_type -> proto.MemberInfo
+	5, // 3: proto.StorageService.Heartbeat:input_type -> proto.HeartbeatRequest
+	2, // 4: proto.StorageService.Store:output_type -> proto.StoreResult
+	0, // 5: proto.StorageService.Retrieve:output_type -> proto.StoredMessage
+	4, // 6: proto.StorageService.RegisterMember:output_type -> proto.RegisterReply
+	6, // 7: proto.StorageService.Heartbeat:output_type -> google.protobuf.Empty
+	4, // [4:8] is the sub-list for method output_type
+	0, // [0:4] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -231,7 +390,7 @@ func file_message_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_message_proto_rawDesc), len(file_message_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
