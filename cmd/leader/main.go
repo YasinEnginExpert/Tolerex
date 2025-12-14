@@ -17,19 +17,18 @@ func main() {
 	tcpPort := ":6666"  // Client → Leader TCP SET/GET
 
 	//-------- Komut satırı argümanları alınır --------
-	confPath := "config/tolerance.conf" // Hata toleransı için dosya yolu
+	confPath := "D:/Tolerex/config/tolerance.conf" // Hata toleransı için dosya yolu
 
 	//-------- Baslangıcta uye yok --------
 	members := []string{}
 
 	//-------- Lider sunucu başlatılır --------
 	leader, err := server.NewLeaderServer(members, confPath)
-	leader.DataDir = "data/leader"
+	
 	if err != nil {
 		log.Fatalf("Lider sunucu baslatilamadi: %v", err)
 
 	}
-
 	leader.StartHeartbeatWatcher()
 
 	// --- gRPC Server ---

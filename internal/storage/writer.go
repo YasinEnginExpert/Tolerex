@@ -7,7 +7,7 @@ import (
 )
 
 func WriteMessage(baseDir string, id int, text string) error {
-	dir := filepath.Join(baseDir, "messaage")
+	dir := filepath.Join(baseDir, "messages")
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return err
 	}

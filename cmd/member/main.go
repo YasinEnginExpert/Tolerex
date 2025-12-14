@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"net"
+	"path/filepath"
 	"time"
 
 	"tolerex/internal/server"
@@ -21,7 +22,7 @@ func main() {
 
 	// --- Sabit adres---
 	leaderAddr := "localhost:5555"
-	dataDir := "data/member-" + *port
+	dataDir := filepath.Join("internal", "data", "member-"+*port)
 	myAddr := "localhost:" + *port
 
 	//--- gRPC sunucusu ayrı goroutine'de başlatılır

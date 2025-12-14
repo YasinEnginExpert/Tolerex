@@ -28,8 +28,8 @@ func (s *MemberServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 func (s *MemberServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.StoredMessage, error) {
 	text, err := storage.ReadMessage(s.DataDir, int(req.Id)) // ID'ye göre diskteki mesajı oku
 	if err != nil {
-		log.Printf("Mesaj okunamadı: %v\n", err)
-		return nil, err // Okuma hatası varsa hata döner
+		log.Printf("Mesaj bulunamadı: id=%d (%v)", req.Id, err)
+		return &pb.StoredMessage{}, nil
 	}
 	return &pb.StoredMessage{Id: req.Id, Text: text}, nil // Mesaj başarıyla okunduysa döner
 }

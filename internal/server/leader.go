@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"tolerex/internal/config"
-	"tolerex/internal/storage"
 	pb "tolerex/proto/gen"
 
 	"google.golang.org/grpc"
@@ -143,11 +142,6 @@ func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (
 
 // -------- İstemciden gelen mesajları alır ve üyeler arasında dağıtır
 func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.StoreResult, error) {
-	// 1) Leader kendi diskine yazar
-	if err := storage.WriteMessage(s.DataDir, int(msg.Id), msg.Text); err != nil {
-		return &pb.StoreResult{Ok: false, Err: "Lider diske yazamadı"}, nil
-	}
-
 	// 2) Alive üyeler arasından en az yükte olanları seç
 	var stats []memberStat
 
@@ -216,27 +210,34 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 
 // -------- Gelen Get istegine göre sunuculara tek tek bakılır----
 func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.StoredMessage, error) {
-	// Önce leader disk
-	text, err := storage.ReadMessage(s.DataDir, int(req.Id))
-	if err == nil {
-		return &pb.StoredMessage{Id: req.Id, Text: text}, nil
-	}
-
+	log.Printf("[GET] id=%d", req.Id)
 	// Replika listesi
 	s.mu.Lock()
 	replicas, ok := s.MsgMap[int(req.Id)]
+	members := append([]string(nil), s.Members...)
 	s.mu.Unlock()
 
-	if !ok {
-		return nil, nil
+	if ok {
+		log.Printf("[GET] replicas found for id=%d -> %v", req.Id, replicas)
+	} else {
+		log.Printf("[GET] no replicas found for id=%d, fallback to all members -> %v", req.Id, members)
+	}
+
+	var targets []string
+	if ok && len(replicas) > 0 {
+		targets = replicas
+	} else {
+		targets = members
 	}
 
 	// sırayla alive olanlara sor
-	for _, addr := range replicas {
+	for _, addr := range targets {
 		s.mu.Lock()
 		info := s.MemberLog[addr]
 		alive := info != nil && info.Alive
 		s.mu.Unlock()
+
+		log.Printf("[GET] trying member=%s (alive=%v)", addr, alive)
 
 		if !alive {
 			continue
