@@ -1,77 +1,94 @@
 package main
 
 import (
-	"fmt"
-	"log"
 	"net"
+	"net/http"
 	"time"
+
+	"tolerex/internal/logger"
+	"tolerex/internal/middleware"
 	"tolerex/internal/server"
 	proto "tolerex/proto/gen"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 )
 
 func main() {
-	// --- Sabit portlar ---
-	grpcPort := ":5555" // Member → Leader gRPC iletişimi
-	tcpPort := ":6666"  // Client → Leader TCP SET/GET
+	// -------- Logger init --------
+	logger.Init()
+	logger.Leader.Println("Leader server starting...")
 
-	//-------- Komut satırı argümanları alınır --------
-	confPath := "D:/Tolerex/config/tolerance.conf" // Hata toleransı için dosya yolu
+	// -------- Ports --------
+	grpcPort := ":5555"
+	tcpPort := ":6666"
 
-	//-------- Baslangıcta uye yok --------
+	// -------- Config --------
+	confPath := "D:/Tolerex/config/tolerance.conf"
 	members := []string{}
 
-	//-------- Lider sunucu başlatılır --------
+	// -------- Leader init --------
 	leader, err := server.NewLeaderServer(members, confPath)
-	
 	if err != nil {
-		log.Fatalf("Lider sunucu baslatilamadi: %v", err)
-
+		logger.Leader.Fatalf("Leader init failed: %v", err)
 	}
+
 	leader.StartHeartbeatWatcher()
 
-	// --- gRPC Server ---
+	// -------- gRPC Server --------
 	go func() {
 		lis, err := net.Listen("tcp", grpcPort)
 		if err != nil {
-			log.Fatalf("[FATAL] Failed to start gRPC server: %v", err)
+			logger.Leader.Fatalf("Failed to listen on gRPC port %s: %v", grpcPort, err)
 		}
 
-		grpcServer := grpc.NewServer()
+		grpcServer := grpc.NewServer(
+			grpc.ChainUnaryInterceptor(
+				middleware.RecoveryInterceptor("leader"),
+				middleware.RequestIDInterceptor(),
+				middleware.LoggingInterceptor("leader"),
+				middleware.MetricsInterceptor(),
+			),
+		)
 		proto.RegisterStorageServiceServer(grpcServer, leader)
 
-		log.Printf("[INFO] Leader gRPC server listening on %s\n", grpcPort)
+		logger.Leader.Printf("Leader gRPC server listening on %s", grpcPort)
+
 		if err := grpcServer.Serve(lis); err != nil {
-			log.Fatalf("[FATAL] gRPC server error: %v", err)
+			logger.Leader.Fatalf("gRPC server error: %v", err)
 		}
 	}()
 
-	// --- TCP Server (Client SET/GET) ---
+	// -------- TCP Server --------
 	go func() {
 		listener, err := net.Listen("tcp", tcpPort)
 		if err != nil {
-			log.Fatalf("[FATAL] Failed to start TCP server: %v", err)
+			logger.Leader.Fatalf("Failed to listen on TCP port %s: %v", tcpPort, err)
 		}
 		defer listener.Close()
 
-		fmt.Printf("[INFO] Leader TCP server listening on %s\n", tcpPort)
+		logger.Leader.Printf("Leader TCP server listening on %s", tcpPort)
 
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				log.Printf("[WARN] Incoming TCP connection failed: %v", err)
+				logger.Leader.Printf("Incoming TCP connection failed: %v", err)
 				continue
 			}
 			go leader.HandleClient(conn)
 		}
 	}()
 
-	// --- Üye istatistiklerini yazdır ---
+	//--- Prometheus ----(http://localhost:9090/metrics)
+	go func() {
+		logger.Leader.Println("Metrics server listening on :9090")
+		http.Handle("/metrics", promhttp.Handler())
+		http.ListenAndServe(":9090", nil)
+	}()
+
+	// -------- Periodic stats --------
 	for {
 		time.Sleep(30 * time.Second)
 		leader.PrintMemberStats()
 	}
 }
-
-// go run cmd/leader/main.go

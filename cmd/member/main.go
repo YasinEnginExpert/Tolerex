@@ -5,10 +5,15 @@ import (
 	"flag"
 	"log"
 	"net"
+	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
-
+	"tolerex/internal/logger"
+	"tolerex/internal/middleware"
 	"tolerex/internal/server"
+
 	proto "tolerex/proto/gen"
 
 	"google.golang.org/grpc"
@@ -16,14 +21,37 @@ import (
 )
 
 func main() {
-	port := flag.String("port", "5556", "gRPC port")
+	//--- Loglama Islemi ---
+	logger.Init()
+	logger.Member.Println("Member server starting...")
 
+	//--- Parametre Tahsisi ---
+	port := flag.String("port", "5556", "gRPC port")
 	flag.Parse()
 
 	// --- Sabit adres---
 	leaderAddr := "localhost:5555"
-	dataDir := filepath.Join("internal", "data", "member-"+*port)
+
 	myAddr := "localhost:" + *port
+
+	//--- islem bitince sil---
+	dataDir := filepath.Join("internal", "data", "member-"+*port)
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		log.Fatalf("DataDir oluşturulamadı: %v", err)
+	}
+	cleanup := func() {
+		os.RemoveAll(dataDir)
+	}
+	defer cleanup()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sig
+		cleanup()
+		os.Exit(0)
+	}()
 
 	//--- gRPC sunucusu ayrı goroutine'de başlatılır
 	go func() {
@@ -32,7 +60,14 @@ func main() {
 			log.Fatalf("Port dinlenemedi: %v", err)
 		}
 
-		grpcServer := grpc.NewServer()
+		grpcServer := grpc.NewServer(
+			grpc.ChainUnaryInterceptor(
+				middleware.RecoveryInterceptor("member"),
+				middleware.RequestIDInterceptor(),
+				middleware.LoggingInterceptor("member"),
+				middleware.MetricsInterceptor(),
+			),
+		)
 
 		member := &server.MemberServer{
 			DataDir: dataDir, //

@@ -2,34 +2,46 @@ package server
 
 import (
 	"context"
-	"log"
+
+	"tolerex/internal/logger"
 	"tolerex/internal/storage"
-	pb "tolerex/proto/gen" // gRPC için otomatik üretilen protobuf interface'i
+	pb "tolerex/proto/gen"
 )
 
-// ------ Üye sunucu tipi, gRPC interface'ini gövdesiz şekilde içerir
+// -------- Üye sunucu
 type MemberServer struct {
 	pb.UnimplementedStorageServiceServer
 	DataDir string
 }
 
-// ------ Store metodu: Liderden gelen mesajı diske yazar
+// -------- Store: Liderden gelen mesajı diske yazar
 func (s *MemberServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.StoreResult, error) {
-	err := storage.WriteMessage(s.DataDir, int(msg.Id), msg.Text) // Disk yazımı
+	log := logger.WithContext(ctx, logger.Member)
+
+	log.Printf("Store request received: msg_id=%d", msg.Id)
+
+	err := storage.WriteMessage(s.DataDir, int(msg.Id), msg.Text)
 	if err != nil {
-		log.Printf("Disk yazımı başarısız: %v\n", err)
-		return &pb.StoreResult{Ok: false, Err: err.Error()}, nil // Hata varsa geri dön
+		log.Printf("Disk write failed: %v", err)
+		return &pb.StoreResult{Ok: false, Err: err.Error()}, nil
 	}
-	log.Printf("Mesaj kaydedildi: id=%d", msg.Id)
-	return &pb.StoreResult{Ok: true}, nil // Başarıyla kaydedildiyse OK döner
+
+	log.Printf("Message stored successfully: msg_id=%d", msg.Id)
+	return &pb.StoreResult{Ok: true}, nil
 }
 
-// ------ Retrieve metodu: Diskten istenen ID'li mesajı okur
+// -------- Retrieve: Diskten mesajı okur
 func (s *MemberServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.StoredMessage, error) {
-	text, err := storage.ReadMessage(s.DataDir, int(req.Id)) // ID'ye göre diskteki mesajı oku
+	log := logger.WithContext(ctx, logger.Member)
+
+	log.Printf("Retrieve request received: msg_id=%d", req.Id)
+
+	text, err := storage.ReadMessage(s.DataDir, int(req.Id))
 	if err != nil {
-		log.Printf("Mesaj bulunamadı: id=%d (%v)", req.Id, err)
+		log.Printf("Message not found: msg_id=%d, err=%v", req.Id, err)
 		return &pb.StoredMessage{}, nil
 	}
-	return &pb.StoredMessage{Id: req.Id, Text: text}, nil // Mesaj başarıyla okunduysa döner
+
+	log.Printf("Message retrieved successfully: msg_id=%d", req.Id)
+	return &pb.StoredMessage{Id: req.Id, Text: text}, nil
 }

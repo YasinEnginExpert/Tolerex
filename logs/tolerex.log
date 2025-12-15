@@ -1,0 +1,257 @@
+[LEADER] 2025/12/15 21:14:34.309671 main.go:20: Leader server starting...
+[LEADER] 2025/12/15 21:14:34.339165 leader.go:96: Tolerance file path: D:/Tolerex/config/tolerance.conf
+[LEADER] 2025/12/15 21:14:34.339165 main.go:84: Metrics server listening on :9090
+[LEADER] 2025/12/15 21:14:34.340242 main.go:55: Leader gRPC server listening on :5555
+[LEADER] 2025/12/15 21:14:34.340242 main.go:70: Leader TCP server listening on :6666
+[LEADER] [REQ:8e24f324-dc2c-4789-bbb0-d2e4b4e6b8b1] 2025/12/15 21:14:38.467395 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:8e24f324-dc2c-4789-bbb0-d2e4b4e6b8b1] 2025/12/15 21:14:38.467395 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:ddc99600-fa51-4621-afd4-27781f091e64] 2025/12/15 21:14:43.479623 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:ddc99600-fa51-4621-afd4-27781f091e64] 2025/12/15 21:14:43.481720 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=2.0975ms
+[LEADER] [REQ:956cdf0c-b5e8-49c0-91ae-48e11956fb8c] 2025/12/15 21:14:50.753982 logging.go:28: gRPC started: /proto.StorageService/RegisterMember
+[LEADER] [REQ:956cdf0c-b5e8-49c0-91ae-48e11956fb8c] 2025/12/15 21:14:50.754518 leader.go:148: New member registered: localhost:5556
+[LEADER] [REQ:956cdf0c-b5e8-49c0-91ae-48e11956fb8c] 2025/12/15 21:14:50.754518 logging.go:37: gRPC finished: /proto.StorageService/RegisterMember | duration=535.7µs
+[LEADER] [REQ:1cd649b9-502e-4e17-a4cf-3141a7288e20] 2025/12/15 21:14:50.756087 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:1cd649b9-502e-4e17-a4cf-3141a7288e20] 2025/12/15 21:14:50.756087 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:1cd649b9-502e-4e17-a4cf-3141a7288e20] 2025/12/15 21:14:50.756087 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:22c0e897-ae1f-41a4-9e34-94b8608bd7df] 2025/12/15 21:14:55.767129 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:22c0e897-ae1f-41a4-9e34-94b8608bd7df] 2025/12/15 21:14:55.767129 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:22c0e897-ae1f-41a4-9e34-94b8608bd7df] 2025/12/15 21:14:55.767129 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:fd1a0b88-d531-47b0-91d5-ec53ff3d75c4] 2025/12/15 21:15:00.778475 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:fd1a0b88-d531-47b0-91d5-ec53ff3d75c4] 2025/12/15 21:15:00.778475 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:fd1a0b88-d531-47b0-91d5-ec53ff3d75c4] 2025/12/15 21:15:00.778475 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] 2025/12/15 21:15:04.339284 leader.go:330: [2J[H
+[LEADER] 2025/12/15 21:15:04.339284 leader.go:331: ==== MEMBER STATUS ====
+[LEADER] 2025/12/15 21:15:04.339284 leader.go:334: Addr=localhost:5556 | Alive=true | LastSeen=21:15:00 | MsgCnt=0
+[LEADER] 2025/12/15 21:15:04.339284 leader.go:343: =======================
+[LEADER] [REQ:650f6307-8db7-4b5e-bb7f-8b1891447f06] 2025/12/15 21:15:05.790809 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:650f6307-8db7-4b5e-bb7f-8b1891447f06] 2025/12/15 21:15:05.790809 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:650f6307-8db7-4b5e-bb7f-8b1891447f06] 2025/12/15 21:15:05.790809 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:6c96808d-6981-4be7-bed2-f8bbf82ed031] 2025/12/15 21:15:10.801839 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:6c96808d-6981-4be7-bed2-f8bbf82ed031] 2025/12/15 21:15:10.801839 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:6c96808d-6981-4be7-bed2-f8bbf82ed031] 2025/12/15 21:15:10.801839 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:4049f7a3-c78f-421d-8312-1926a6d08009] 2025/12/15 21:15:15.814856 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:4049f7a3-c78f-421d-8312-1926a6d08009] 2025/12/15 21:15:15.814856 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:4049f7a3-c78f-421d-8312-1926a6d08009] 2025/12/15 21:15:15.814856 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:fc95d87c-8fc6-4eff-b761-625f11b1a7e9] 2025/12/15 21:15:20.825883 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:fc95d87c-8fc6-4eff-b761-625f11b1a7e9] 2025/12/15 21:15:20.825883 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:fc95d87c-8fc6-4eff-b761-625f11b1a7e9] 2025/12/15 21:15:20.825883 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:171ffa37-980e-463a-992b-d59417a5ac8d] 2025/12/15 21:15:25.838296 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:171ffa37-980e-463a-992b-d59417a5ac8d] 2025/12/15 21:15:25.838296 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:171ffa37-980e-463a-992b-d59417a5ac8d] 2025/12/15 21:15:25.838296 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:2be57935-74d1-4a7f-88c5-87cf19fbfad5] 2025/12/15 21:15:30.850585 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:2be57935-74d1-4a7f-88c5-87cf19fbfad5] 2025/12/15 21:15:30.850585 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:2be57935-74d1-4a7f-88c5-87cf19fbfad5] 2025/12/15 21:15:30.850585 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] 2025/12/15 21:15:34.339717 leader.go:330: [2J[H
+[LEADER] 2025/12/15 21:15:34.339717 leader.go:331: ==== MEMBER STATUS ====
+[LEADER] 2025/12/15 21:15:34.339717 leader.go:334: Addr=localhost:5556 | Alive=true | LastSeen=21:15:30 | MsgCnt=0
+[LEADER] 2025/12/15 21:15:34.339717 leader.go:343: =======================
+[LEADER] [REQ:ac2b2a7e-0346-48e7-80f0-d1e23caeb53f] 2025/12/15 21:15:35.863079 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:ac2b2a7e-0346-48e7-80f0-d1e23caeb53f] 2025/12/15 21:15:35.863079 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:ac2b2a7e-0346-48e7-80f0-d1e23caeb53f] 2025/12/15 21:15:35.863079 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:66fd8824-9083-41f0-91d8-f7276e42c402] 2025/12/15 21:15:40.873862 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:66fd8824-9083-41f0-91d8-f7276e42c402] 2025/12/15 21:15:40.873862 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:66fd8824-9083-41f0-91d8-f7276e42c402] 2025/12/15 21:15:40.873862 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:0ee82234-7ea4-498f-8558-3a111e51a14b] 2025/12/15 21:15:45.885838 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:0ee82234-7ea4-498f-8558-3a111e51a14b] 2025/12/15 21:15:45.885838 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:0ee82234-7ea4-498f-8558-3a111e51a14b] 2025/12/15 21:15:45.885838 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:201e9b84-13eb-49e0-9479-27b020943fb5] 2025/12/15 21:15:50.898348 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:201e9b84-13eb-49e0-9479-27b020943fb5] 2025/12/15 21:15:50.898348 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:201e9b84-13eb-49e0-9479-27b020943fb5] 2025/12/15 21:15:50.898348 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:792afe7d-f56f-4487-91cf-1e22a69d83b3] 2025/12/15 21:15:55.911606 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:792afe7d-f56f-4487-91cf-1e22a69d83b3] 2025/12/15 21:15:55.911606 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:792afe7d-f56f-4487-91cf-1e22a69d83b3] 2025/12/15 21:15:55.911606 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:b78edfae-51c5-4918-a655-9e027c208e57] 2025/12/15 21:16:00.922278 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:b78edfae-51c5-4918-a655-9e027c208e57] 2025/12/15 21:16:00.922278 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:b78edfae-51c5-4918-a655-9e027c208e57] 2025/12/15 21:16:00.922278 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] 2025/12/15 21:16:04.340026 leader.go:330: [2J[H
+[LEADER] 2025/12/15 21:16:04.340026 leader.go:331: ==== MEMBER STATUS ====
+[LEADER] 2025/12/15 21:16:04.340026 leader.go:334: Addr=localhost:5556 | Alive=true | LastSeen=21:16:00 | MsgCnt=0
+[LEADER] 2025/12/15 21:16:04.340026 leader.go:343: =======================
+[LEADER] [REQ:9e2b2166-a074-4228-8325-6621722da882] 2025/12/15 21:16:05.935863 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:9e2b2166-a074-4228-8325-6621722da882] 2025/12/15 21:16:05.935863 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:9e2b2166-a074-4228-8325-6621722da882] 2025/12/15 21:16:05.935863 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:780e5c41-2638-4093-8987-1e00da7e4f46] 2025/12/15 21:16:10.948507 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:780e5c41-2638-4093-8987-1e00da7e4f46] 2025/12/15 21:16:10.948507 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:780e5c41-2638-4093-8987-1e00da7e4f46] 2025/12/15 21:16:10.949045 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=537.6µs
+[LEADER] [REQ:21a66c31-383c-480e-96e8-b17217df3ad9] 2025/12/15 21:16:15.961420 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:21a66c31-383c-480e-96e8-b17217df3ad9] 2025/12/15 21:16:15.961420 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:21a66c31-383c-480e-96e8-b17217df3ad9] 2025/12/15 21:16:15.961420 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:371c75b6-daeb-461a-9d44-7b64035b79e1] 2025/12/15 21:16:20.973688 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:371c75b6-daeb-461a-9d44-7b64035b79e1] 2025/12/15 21:16:20.973688 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:371c75b6-daeb-461a-9d44-7b64035b79e1] 2025/12/15 21:16:20.973688 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:7fcd5fe5-e914-426c-8779-4b9a6b7240a0] 2025/12/15 21:16:25.985321 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:7fcd5fe5-e914-426c-8779-4b9a6b7240a0] 2025/12/15 21:16:25.985321 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:7fcd5fe5-e914-426c-8779-4b9a6b7240a0] 2025/12/15 21:16:25.985321 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:3d3077ee-1239-4a98-8dcd-4ac490d67497] 2025/12/15 21:16:30.998485 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:3d3077ee-1239-4a98-8dcd-4ac490d67497] 2025/12/15 21:16:30.998485 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:3d3077ee-1239-4a98-8dcd-4ac490d67497] 2025/12/15 21:16:30.998485 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] 2025/12/15 21:16:34.340036 leader.go:330: [2J[H
+[LEADER] 2025/12/15 21:16:34.340036 leader.go:331: ==== MEMBER STATUS ====
+[LEADER] 2025/12/15 21:16:34.340036 leader.go:334: Addr=localhost:5556 | Alive=true | LastSeen=21:16:30 | MsgCnt=0
+[LEADER] 2025/12/15 21:16:34.340036 leader.go:343: =======================
+[LEADER] [REQ:b4231e11-aadb-49d7-92ae-6e92e40d9563] 2025/12/15 21:16:36.011857 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:b4231e11-aadb-49d7-92ae-6e92e40d9563] 2025/12/15 21:16:36.011857 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:b4231e11-aadb-49d7-92ae-6e92e40d9563] 2025/12/15 21:16:36.011857 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:53777af6-9a78-4c24-a613-d969168531f5] 2025/12/15 21:16:41.027012 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:53777af6-9a78-4c24-a613-d969168531f5] 2025/12/15 21:16:41.027012 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:53777af6-9a78-4c24-a613-d969168531f5] 2025/12/15 21:16:41.027012 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:f345bc0c-2b97-4f01-a0d4-437801710062] 2025/12/15 21:16:46.037987 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:f345bc0c-2b97-4f01-a0d4-437801710062] 2025/12/15 21:16:46.037987 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:f345bc0c-2b97-4f01-a0d4-437801710062] 2025/12/15 21:16:46.038503 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=516µs
+[LEADER] [REQ:4bd9ad5c-9999-4150-8903-713eec09d32c] 2025/12/15 21:16:51.050832 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:4bd9ad5c-9999-4150-8903-713eec09d32c] 2025/12/15 21:16:51.051359 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:4bd9ad5c-9999-4150-8903-713eec09d32c] 2025/12/15 21:16:51.051359 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=526.4µs
+[LEADER] [REQ:0531f706-c085-495a-b5be-591a7255e36d] 2025/12/15 21:16:56.064705 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:0531f706-c085-495a-b5be-591a7255e36d] 2025/12/15 21:16:56.064705 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:0531f706-c085-495a-b5be-591a7255e36d] 2025/12/15 21:16:56.064705 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:c56f56ef-13af-4bc1-85bc-1bad8d1d2e10] 2025/12/15 21:17:01.076799 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:c56f56ef-13af-4bc1-85bc-1bad8d1d2e10] 2025/12/15 21:17:01.076799 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:c56f56ef-13af-4bc1-85bc-1bad8d1d2e10] 2025/12/15 21:17:01.076799 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] 2025/12/15 21:17:04.340274 leader.go:330: [2J[H
+[LEADER] 2025/12/15 21:17:04.340274 leader.go:331: ==== MEMBER STATUS ====
+[LEADER] 2025/12/15 21:17:04.340274 leader.go:334: Addr=localhost:5556 | Alive=true | LastSeen=21:17:01 | MsgCnt=0
+[LEADER] 2025/12/15 21:17:04.340274 leader.go:343: =======================
+[LEADER] [REQ:f4fe5703-9c37-43e1-afce-280e1f0e5902] 2025/12/15 21:17:06.089605 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:f4fe5703-9c37-43e1-afce-280e1f0e5902] 2025/12/15 21:17:06.089605 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:f4fe5703-9c37-43e1-afce-280e1f0e5902] 2025/12/15 21:17:06.089605 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:ba452e39-d391-4d69-a073-a1f35c67c245] 2025/12/15 21:17:11.100643 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:ba452e39-d391-4d69-a073-a1f35c67c245] 2025/12/15 21:17:11.100643 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:ba452e39-d391-4d69-a073-a1f35c67c245] 2025/12/15 21:17:11.100643 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:8e58b2b2-c228-49f2-9f72-ce684b15a600] 2025/12/15 21:17:16.111421 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:8e58b2b2-c228-49f2-9f72-ce684b15a600] 2025/12/15 21:17:16.111421 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:8e58b2b2-c228-49f2-9f72-ce684b15a600] 2025/12/15 21:17:16.111421 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:28b43e18-f902-4711-82be-06d225b07aa1] 2025/12/15 21:17:21.122654 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:28b43e18-f902-4711-82be-06d225b07aa1] 2025/12/15 21:17:21.122654 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:28b43e18-f902-4711-82be-06d225b07aa1] 2025/12/15 21:17:21.122654 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:57728d0c-bde7-40ea-b933-3fcf6df31f40] 2025/12/15 21:17:26.134709 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:57728d0c-bde7-40ea-b933-3fcf6df31f40] 2025/12/15 21:17:26.135227 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:57728d0c-bde7-40ea-b933-3fcf6df31f40] 2025/12/15 21:17:26.135227 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=517.6µs
+[LEADER] [REQ:102f26d8-390f-43c0-9212-865037283a33] 2025/12/15 21:17:31.146693 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:102f26d8-390f-43c0-9212-865037283a33] 2025/12/15 21:17:31.146693 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:102f26d8-390f-43c0-9212-865037283a33] 2025/12/15 21:17:31.146693 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] 2025/12/15 21:18:00.488408 main.go:20: Leader server starting...
+[LEADER] 2025/12/15 21:18:00.517889 leader.go:96: Tolerance file path: D:/Tolerex/config/tolerance.conf
+[LEADER] 2025/12/15 21:18:00.517889 main.go:84: Metrics server listening on :9090
+[LEADER] 2025/12/15 21:18:00.519463 main.go:70: Leader TCP server listening on :6666
+[LEADER] 2025/12/15 21:18:00.519463 main.go:55: Leader gRPC server listening on :5555
+[LEADER] [REQ:c39bcaff-cbcd-4590-8436-642fcc93f89c] 2025/12/15 21:18:01.221580 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:c39bcaff-cbcd-4590-8436-642fcc93f89c] 2025/12/15 21:18:01.221580 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:29d59fc5-4652-4644-8c95-97de44e5c63a] 2025/12/15 21:18:06.234624 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:29d59fc5-4652-4644-8c95-97de44e5c63a] 2025/12/15 21:18:06.234624 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:e07b1231-f809-4ab8-9497-abec11d7a194] 2025/12/15 21:18:11.246325 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:e07b1231-f809-4ab8-9497-abec11d7a194] 2025/12/15 21:18:11.246325 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:ddc8a7b9-a74c-420e-a72a-d59c5f4e09f2] 2025/12/15 21:18:16.261025 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:ddc8a7b9-a74c-420e-a72a-d59c5f4e09f2] 2025/12/15 21:18:16.261025 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[MEMBER] 2025/12/15 21:18:50.585852 main.go:26: Member server starting...
+[LEADER] [REQ:bdb401d4-367d-4750-b750-cefef277e92a] 2025/12/15 21:18:51.135504 logging.go:28: gRPC started: /proto.StorageService/RegisterMember
+[LEADER] [REQ:bdb401d4-367d-4750-b750-cefef277e92a] 2025/12/15 21:18:51.135504 leader.go:148: New member registered: localhost:5556
+[LEADER] [REQ:bdb401d4-367d-4750-b750-cefef277e92a] 2025/12/15 21:18:51.135504 logging.go:37: gRPC finished: /proto.StorageService/RegisterMember | duration=0s
+[LEADER] [REQ:46afe013-ba04-4a24-9b03-1b80df7593cc] 2025/12/15 21:18:51.137595 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:46afe013-ba04-4a24-9b03-1b80df7593cc] 2025/12/15 21:18:51.137595 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:46afe013-ba04-4a24-9b03-1b80df7593cc] 2025/12/15 21:18:51.137595 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:96f4fdfc-e5e1-4e62-9d05-66dd92eb9864] 2025/12/15 21:18:56.150092 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:96f4fdfc-e5e1-4e62-9d05-66dd92eb9864] 2025/12/15 21:18:56.150609 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:96f4fdfc-e5e1-4e62-9d05-66dd92eb9864] 2025/12/15 21:18:56.150609 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=516.9µs
+[LEADER] [REQ:d08643d2-1d54-4a1c-8ab4-bf69612f1754] 2025/12/15 21:19:01.163586 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:d08643d2-1d54-4a1c-8ab4-bf69612f1754] 2025/12/15 21:19:01.163586 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:d08643d2-1d54-4a1c-8ab4-bf69612f1754] 2025/12/15 21:19:01.163586 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:a834c221-624f-4ecf-9fa5-e8a5cb2e1a85] 2025/12/15 21:19:06.176836 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:a834c221-624f-4ecf-9fa5-e8a5cb2e1a85] 2025/12/15 21:19:06.176836 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:a834c221-624f-4ecf-9fa5-e8a5cb2e1a85] 2025/12/15 21:19:06.176836 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] 2025/12/15 21:19:25.518126 leader.go:84: Member down: localhost:5556
+[MEMBER] 2025/12/15 21:19:48.137473 main.go:26: Member server starting...
+[LEADER] [REQ:08dfd29c-9ab6-44aa-b881-0d7a14055e7a] 2025/12/15 21:19:48.682710 logging.go:28: gRPC started: /proto.StorageService/RegisterMember
+[LEADER] [REQ:08dfd29c-9ab6-44aa-b881-0d7a14055e7a] 2025/12/15 21:19:48.682710 logging.go:37: gRPC finished: /proto.StorageService/RegisterMember | duration=0s
+[LEADER] [REQ:5c50de31-6f80-448a-b89b-8c2a99a4cb17] 2025/12/15 21:19:48.684814 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:5c50de31-6f80-448a-b89b-8c2a99a4cb17] 2025/12/15 21:19:48.684814 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:5c50de31-6f80-448a-b89b-8c2a99a4cb17] 2025/12/15 21:19:48.684814 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:40dead74-7f5c-4be5-a9bb-dbbc4634daaa] 2025/12/15 21:19:53.696338 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:40dead74-7f5c-4be5-a9bb-dbbc4634daaa] 2025/12/15 21:19:53.696338 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:40dead74-7f5c-4be5-a9bb-dbbc4634daaa] 2025/12/15 21:19:53.696338 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:820a06f3-36be-48f1-85b1-b0b7496fa316] 2025/12/15 21:19:58.710383 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:820a06f3-36be-48f1-85b1-b0b7496fa316] 2025/12/15 21:19:58.710383 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:820a06f3-36be-48f1-85b1-b0b7496fa316] 2025/12/15 21:19:58.710383 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:c2337788-259b-4cdb-be6c-9dc0ff59e5fc] 2025/12/15 21:20:03.722452 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:c2337788-259b-4cdb-be6c-9dc0ff59e5fc] 2025/12/15 21:20:03.722452 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:c2337788-259b-4cdb-be6c-9dc0ff59e5fc] 2025/12/15 21:20:03.722452 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:cfa3e886-956d-439a-b1c8-ad1a1757f69f] 2025/12/15 21:20:08.736176 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:cfa3e886-956d-439a-b1c8-ad1a1757f69f] 2025/12/15 21:20:08.736176 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:cfa3e886-956d-439a-b1c8-ad1a1757f69f] 2025/12/15 21:20:08.736176 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] 2025/12/15 21:20:17.319962 main.go:20: Leader server starting...
+[LEADER] 2025/12/15 21:20:17.347835 leader.go:96: Tolerance file path: D:/Tolerex/config/tolerance.conf
+[LEADER] 2025/12/15 21:20:17.354141 main.go:84: Metrics server listening on :9090
+[LEADER] 2025/12/15 21:20:17.355177 main.go:70: Leader TCP server listening on :6666
+[LEADER] 2025/12/15 21:20:17.355697 main.go:55: Leader gRPC server listening on :5555
+[MEMBER] 2025/12/15 21:20:25.085420 main.go:26: Member server starting...
+[LEADER] [REQ:40b92242-84f7-4dda-8805-8391e2eee2d0] 2025/12/15 21:20:25.636217 logging.go:28: gRPC started: /proto.StorageService/RegisterMember
+[LEADER] [REQ:40b92242-84f7-4dda-8805-8391e2eee2d0] 2025/12/15 21:20:25.636217 leader.go:148: New member registered: localhost:5556
+[LEADER] [REQ:40b92242-84f7-4dda-8805-8391e2eee2d0] 2025/12/15 21:20:25.636217 logging.go:37: gRPC finished: /proto.StorageService/RegisterMember | duration=0s
+[LEADER] [REQ:860a257f-2fcf-43cb-805a-639c929bd02f] 2025/12/15 21:20:25.637766 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:860a257f-2fcf-43cb-805a-639c929bd02f] 2025/12/15 21:20:25.637766 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:860a257f-2fcf-43cb-805a-639c929bd02f] 2025/12/15 21:20:25.637766 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:a99af565-4c32-4f37-b301-875e25e2105f] 2025/12/15 21:20:30.651894 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:a99af565-4c32-4f37-b301-875e25e2105f] 2025/12/15 21:20:30.651894 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:a99af565-4c32-4f37-b301-875e25e2105f] 2025/12/15 21:20:30.651894 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:0d95037e-0696-4c01-9fb1-96cf422b1752] 2025/12/15 21:20:35.664075 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:0d95037e-0696-4c01-9fb1-96cf422b1752] 2025/12/15 21:20:35.664075 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:0d95037e-0696-4c01-9fb1-96cf422b1752] 2025/12/15 21:20:35.664075 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:719c57e7-e6c0-4cb9-a22a-2df97cd8384a] 2025/12/15 21:20:40.675760 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:719c57e7-e6c0-4cb9-a22a-2df97cd8384a] 2025/12/15 21:20:40.675760 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:719c57e7-e6c0-4cb9-a22a-2df97cd8384a] 2025/12/15 21:20:40.675760 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:3e22b91e-ee59-443a-b9fa-0f2ffa86f966] 2025/12/15 21:20:45.687823 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:3e22b91e-ee59-443a-b9fa-0f2ffa86f966] 2025/12/15 21:20:45.688347 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:3e22b91e-ee59-443a-b9fa-0f2ffa86f966] 2025/12/15 21:20:45.688347 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=524.5µs
+[LEADER] [REQ:4ee08501-850b-4466-82d2-0c3e5f1f07aa] 2025/12/15 21:20:50.698892 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:4ee08501-850b-4466-82d2-0c3e5f1f07aa] 2025/12/15 21:20:50.698892 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:4ee08501-850b-4466-82d2-0c3e5f1f07aa] 2025/12/15 21:20:50.698892 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:tcp-1765822850903532400] 2025/12/15 21:20:50.903532 leader.go:273: TCP client connected: [::1]:49920
+[LEADER] [REQ:28fa0170-65ff-4a09-9f21-4f22646e150b] 2025/12/15 21:20:55.709904 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:28fa0170-65ff-4a09-9f21-4f22646e150b] 2025/12/15 21:20:55.709904 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:28fa0170-65ff-4a09-9f21-4f22646e150b] 2025/12/15 21:20:55.709904 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[MEMBER] [REQ:a741fd72-479d-42cf-9fcc-92d88fcafd93] 2025/12/15 21:20:59.537975 logging.go:28: gRPC started: /proto.StorageService/Store
+[MEMBER] [REQ:a741fd72-479d-42cf-9fcc-92d88fcafd93] 2025/12/15 21:20:59.537975 member.go:21: Store request received: msg_id=10
+[MEMBER] [REQ:a741fd72-479d-42cf-9fcc-92d88fcafd93] 2025/12/15 21:20:59.538669 member.go:29: Message stored successfully: msg_id=10
+[MEMBER] [REQ:a741fd72-479d-42cf-9fcc-92d88fcafd93] 2025/12/15 21:20:59.538669 logging.go:37: gRPC finished: /proto.StorageService/Store | duration=694.2µs
+[LEADER] [REQ:19b066a8-0707-457e-9004-092d77ba224c] 2025/12/15 21:21:00.726184 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:19b066a8-0707-457e-9004-092d77ba224c] 2025/12/15 21:21:00.726184 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:19b066a8-0707-457e-9004-092d77ba224c] 2025/12/15 21:21:00.726184 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:565510bc-a798-4f20-a7d3-8085817a23b8] 2025/12/15 21:21:05.738013 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:565510bc-a798-4f20-a7d3-8085817a23b8] 2025/12/15 21:21:05.738013 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:565510bc-a798-4f20-a7d3-8085817a23b8] 2025/12/15 21:21:05.738013 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:12fefeb0-8594-4ecf-b68c-cab72bd14077] 2025/12/15 21:21:10.751220 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:12fefeb0-8594-4ecf-b68c-cab72bd14077] 2025/12/15 21:21:10.751220 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:12fefeb0-8594-4ecf-b68c-cab72bd14077] 2025/12/15 21:21:10.751220 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:a5458543-bdb7-42ac-a5d0-c99fad851f6c] 2025/12/15 21:21:15.761930 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:a5458543-bdb7-42ac-a5d0-c99fad851f6c] 2025/12/15 21:21:15.761930 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:a5458543-bdb7-42ac-a5d0-c99fad851f6c] 2025/12/15 21:21:15.761930 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:ff46d46a-2e8e-424c-a390-cd69c341ede6] 2025/12/15 21:21:20.774386 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:ff46d46a-2e8e-424c-a390-cd69c341ede6] 2025/12/15 21:21:20.774386 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:ff46d46a-2e8e-424c-a390-cd69c341ede6] 2025/12/15 21:21:20.774386 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:9fc87934-8306-4e8e-b839-c4fe12018d39] 2025/12/15 21:21:25.785332 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:9fc87934-8306-4e8e-b839-c4fe12018d39] 2025/12/15 21:21:25.785332 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:9fc87934-8306-4e8e-b839-c4fe12018d39] 2025/12/15 21:21:25.785332 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:395285b4-e4c2-4ec8-a9a2-cf8d0acf03d0] 2025/12/15 21:21:30.801744 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:395285b4-e4c2-4ec8-a9a2-cf8d0acf03d0] 2025/12/15 21:21:30.801744 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:395285b4-e4c2-4ec8-a9a2-cf8d0acf03d0] 2025/12/15 21:21:30.801744 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:56290cc6-6508-4ad3-8211-1351ab8e1589] 2025/12/15 21:21:35.814902 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:56290cc6-6508-4ad3-8211-1351ab8e1589] 2025/12/15 21:21:35.814902 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:56290cc6-6508-4ad3-8211-1351ab8e1589] 2025/12/15 21:21:35.814902 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:72b13acf-9c34-4449-a291-057f29c8ec24] 2025/12/15 21:21:40.826339 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:72b13acf-9c34-4449-a291-057f29c8ec24] 2025/12/15 21:21:40.826339 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:72b13acf-9c34-4449-a291-057f29c8ec24] 2025/12/15 21:21:40.826339 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:8bdef59b-29d2-43d0-b035-ff8546c87969] 2025/12/15 21:21:45.838462 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:8bdef59b-29d2-43d0-b035-ff8546c87969] 2025/12/15 21:21:45.838462 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:8bdef59b-29d2-43d0-b035-ff8546c87969] 2025/12/15 21:21:45.838462 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:8a7e2f5e-3ecd-4215-9232-198954999625] 2025/12/15 21:21:50.850401 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:8a7e2f5e-3ecd-4215-9232-198954999625] 2025/12/15 21:21:50.850924 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:8a7e2f5e-3ecd-4215-9232-198954999625] 2025/12/15 21:21:50.850924 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=522.6µs
+[LEADER] [REQ:a263defb-c161-40b3-aea6-2691ebcb5476] 2025/12/15 21:21:55.862042 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:a263defb-c161-40b3-aea6-2691ebcb5476] 2025/12/15 21:21:55.862042 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:a263defb-c161-40b3-aea6-2691ebcb5476] 2025/12/15 21:21:55.862565 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=523.1µs
+[LEADER] [REQ:bf3e4529-939e-4eea-87f4-fad040aec775] 2025/12/15 21:22:00.875525 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:bf3e4529-939e-4eea-87f4-fad040aec775] 2025/12/15 21:22:00.875525 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:bf3e4529-939e-4eea-87f4-fad040aec775] 2025/12/15 21:22:00.875525 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] [REQ:19417a2b-c00d-4a7f-b688-039caf03b4a8] 2025/12/15 21:22:05.907941 logging.go:28: gRPC started: /proto.StorageService/Heartbeat
+[LEADER] [REQ:19417a2b-c00d-4a7f-b688-039caf03b4a8] 2025/12/15 21:22:05.907941 leader.go:63: Heartbeat received from localhost:5556
+[LEADER] [REQ:19417a2b-c00d-4a7f-b688-039caf03b4a8] 2025/12/15 21:22:05.907941 logging.go:37: gRPC finished: /proto.StorageService/Heartbeat | duration=0s
+[LEADER] 2025/12/15 21:22:22.354208 leader.go:84: Member down: localhost:5556
