@@ -15,9 +15,14 @@ import (
 )
 
 func main() {
+	var grpcServer *grpc.Server
+
 	// -------- Logger init --------
 	logger.Init()
-	logger.Leader.Println("Leader server starting...")
+	logger.SetLevel(logger.INFO)
+
+	log := logger.Leader
+	logger.Info(log, "Leader server starting...")
 
 	// -------- Ports --------
 	grpcPort := ":5555"
@@ -30,7 +35,7 @@ func main() {
 	// -------- Leader init --------
 	leader, err := server.NewLeaderServer(members, confPath)
 	if err != nil {
-		logger.Leader.Fatalf("Leader init failed: %v", err)
+		logger.Fatal(log, "Failed to listen on gRPC port %s: %v", grpcPort, err)
 	}
 
 	leader.StartHeartbeatWatcher()
@@ -39,10 +44,10 @@ func main() {
 	go func() {
 		lis, err := net.Listen("tcp", grpcPort)
 		if err != nil {
-			logger.Leader.Fatalf("Failed to listen on gRPC port %s: %v", grpcPort, err)
+			logger.Fatal(log, "Failed to listen on gRPC port %s: %v", grpcPort, err)
 		}
 
-		grpcServer := grpc.NewServer(
+		grpcServer = grpc.NewServer(
 			grpc.ChainUnaryInterceptor(
 				middleware.RecoveryInterceptor("leader"),
 				middleware.RequestIDInterceptor(),
@@ -50,12 +55,13 @@ func main() {
 				middleware.MetricsInterceptor(),
 			),
 		)
+
 		proto.RegisterStorageServiceServer(grpcServer, leader)
 
-		logger.Leader.Printf("Leader gRPC server listening on %s", grpcPort)
+		logger.Info(log, "Leader gRPC server listening on %s", grpcPort)
 
 		if err := grpcServer.Serve(lis); err != nil {
-			logger.Leader.Fatalf("gRPC server error: %v", err)
+			logger.Fatal(log, "gRPC server error: %v", err)
 		}
 	}()
 
@@ -63,16 +69,16 @@ func main() {
 	go func() {
 		listener, err := net.Listen("tcp", tcpPort)
 		if err != nil {
-			logger.Leader.Fatalf("Failed to listen on TCP port %s: %v", tcpPort, err)
+			logger.Fatal(log, "Failed to listen on TCP port %s: %v", tcpPort, err)
 		}
 		defer listener.Close()
 
-		logger.Leader.Printf("Leader TCP server listening on %s", tcpPort)
+		logger.Info(log, "Leader TCP server listening on %s", tcpPort)
 
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				logger.Leader.Printf("Incoming TCP connection failed: %v", err)
+				logger.Warn(log, "Incoming TCP connection failed: %v", err)
 				continue
 			}
 			go leader.HandleClient(conn)
@@ -81,14 +87,17 @@ func main() {
 
 	//--- Prometheus ----(http://localhost:9090/metrics)
 	go func() {
-		logger.Leader.Println("Metrics server listening on :9090")
-		http.Handle("/metrics", promhttp.Handler())
-		http.ListenAndServe(":9090", nil)
+		logger.Info(log, "Metrics server listening on :9090")
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		http.ListenAndServe(":9090", mux)
 	}()
 
 	// -------- Periodic stats --------
-	for {
-		time.Sleep(30 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
 		leader.PrintMemberStats()
 	}
 }

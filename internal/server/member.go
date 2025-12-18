@@ -18,15 +18,15 @@ type MemberServer struct {
 func (s *MemberServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.StoreResult, error) {
 	log := logger.WithContext(ctx, logger.Member)
 
-	log.Printf("Store request received: msg_id=%d", msg.Id)
+	logger.Debug(log, "Store request received: msg_id=%d", msg.Id)
 
 	err := storage.WriteMessage(s.DataDir, int(msg.Id), msg.Text)
 	if err != nil {
-		log.Printf("Disk write failed: %v", err)
+		logger.Error(log, "Disk write failed: msg_id=%d err=%v", msg.Id, err)
 		return &pb.StoreResult{Ok: false, Err: err.Error()}, nil
 	}
 
-	log.Printf("Message stored successfully: msg_id=%d", msg.Id)
+	logger.Info(log, "Message stored successfully: msg_id=%d", msg.Id)
 	return &pb.StoreResult{Ok: true}, nil
 }
 
@@ -34,14 +34,14 @@ func (s *MemberServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 func (s *MemberServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.StoredMessage, error) {
 	log := logger.WithContext(ctx, logger.Member)
 
-	log.Printf("Retrieve request received: msg_id=%d", req.Id)
+	logger.Debug(log, "Retrieve request received: msg_id=%d", req.Id)
 
 	text, err := storage.ReadMessage(s.DataDir, int(req.Id))
 	if err != nil {
-		log.Printf("Message not found: msg_id=%d, err=%v", req.Id, err)
+		logger.Warn(log, "Message not found: msg_id=%d err=%v", req.Id, err)
 		return &pb.StoredMessage{}, nil
 	}
 
-	log.Printf("Message retrieved successfully: msg_id=%d", req.Id)
+	logger.Info(log, "Message retrieved successfully: msg_id=%d", req.Id)
 	return &pb.StoredMessage{Id: req.Id, Text: text}, nil
 }

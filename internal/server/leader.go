@@ -3,8 +3,10 @@ package server
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,6 +48,13 @@ type LeaderServer struct {
 	DataDir   string
 }
 
+// --- Kaydeilecek bilgiler
+type LeaderState struct {
+	Members   []string
+	MemberLog map[string]*MemberInfo
+	MsgMap    map[int][]string
+}
+
 // -------- Heartbeat RPC
 func (s *LeaderServer) Heartbeat(ctx context.Context, hb *pb.HeartbeatRequest) (*emptypb.Empty, error) {
 	log := logger.WithContext(ctx, logger.Leader)
@@ -60,7 +69,7 @@ func (s *LeaderServer) Heartbeat(ctx context.Context, hb *pb.HeartbeatRequest) (
 
 	member.LastSeen = time.Now()
 	member.Alive = true
-	log.Printf("Heartbeat received from %s", hb.Address)
+	logger.Debug(log, "Heartbeat received from %s", hb.Address)
 
 	return &emptypb.Empty{}, nil
 }
@@ -81,9 +90,10 @@ func (s *LeaderServer) StartHeartbeatWatcher() {
 				}
 				if now.Sub(m.LastSeen) > 15*time.Second {
 					if m.Alive {
-						logger.Leader.Printf("Member down: %s", m.Address)
+						logger.Warn(logger.Leader, "Member down: %s", m.Address)
+						m.Alive = false
+						_ = s.saveStateUnsafe() // lock altındayız
 					}
-					m.Alive = false
 				}
 			}
 			s.mu.Unlock()
@@ -93,7 +103,7 @@ func (s *LeaderServer) StartHeartbeatWatcher() {
 
 // -------- Leader oluşturma
 func NewLeaderServer(members []string, toleranceFile string) (*LeaderServer, error) {
-	logger.Leader.Printf("Tolerance file path: %s", toleranceFile)
+	logger.Info(logger.Leader, "Tolerance file path: %s", toleranceFile)
 
 	tolerance, err := config.ReadTolerance(toleranceFile)
 	if err != nil {
@@ -113,12 +123,18 @@ func NewLeaderServer(members []string, toleranceFile string) (*LeaderServer, err
 		}
 	}
 
-	return &LeaderServer{
+	leader := &LeaderServer{
 		Members:   members,
 		Tolerance: tolerance,
 		MsgMap:    make(map[int][]string),
 		MemberLog: memberLog,
-	}, nil
+	}
+
+	if err := leader.loadState(); err != nil {
+		logger.Warn(logger.Leader, "Failed to load leader state: %v", err)
+	}
+
+	return leader, nil
 }
 
 // -------- Yeni üye kaydı
@@ -145,7 +161,9 @@ func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (
 		Alive:      true,
 	}
 
-	log.Printf("New member registered: %s", addr)
+	_ = s.saveStateUnsafe() // lock altındayız
+
+	logger.Info(log, "New member registered: %s", addr)
 	return &pb.RegisterReply{Ok: true}, nil
 }
 
@@ -155,6 +173,7 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 
 	var stats []memberStat
 
+	// snapshot: members + messageCnt
 	s.mu.Lock()
 	for _, addr := range s.Members {
 		info := s.MemberLog[addr]
@@ -163,6 +182,7 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 		}
 		stats = append(stats, memberStat{addr: addr, count: info.MessageCnt})
 	}
+	tol := s.Tolerance
 	s.mu.Unlock()
 
 	sort.Slice(stats, func(i, j int) bool {
@@ -170,20 +190,26 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 	})
 
 	var selected []string
-	for i := 0; i < s.Tolerance && i < len(stats); i++ {
-		selected = append(selected, stats[i].addr)
+	for _, st := range stats {
+		if len(selected) == tol {
+			break
+		}
+		selected = append(selected, st.addr)
 	}
-
-	if len(selected) < s.Tolerance {
+	if len(selected) < tol {
 		return &pb.StoreResult{Ok: false, Err: "Not enough alive members"}, nil
 	}
 
 	var successful []string
 
 	for _, addr := range selected {
+		if len(successful) == tol {
+			break
+		}
+
 		conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
-			log.Printf("Connection error to %s: %v", addr, err)
+			logger.Warn(log, "Connection error to %s: %v", addr, err)
 			continue
 		}
 
@@ -203,14 +229,21 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 			}
 			s.mu.Unlock()
 		} else {
-			log.Printf("Failed to store on member %s: %v", addr, callErr)
+			logger.Error(log, "Failed to store on member %s: %v", addr, callErr)
+			s.mu.Lock()
+			if s.MemberLog[addr] != nil {
+				s.MemberLog[addr].Alive = false
+			}
+			s.mu.Unlock()
 		}
 	}
 
-	if len(successful) == s.Tolerance {
+	if len(successful) == tol {
 		s.mu.Lock()
 		s.MsgMap[int(msg.Id)] = successful
 		s.mu.Unlock()
+
+		_ = s.saveState() // <-- SAFE (lock alır)
 		return &pb.StoreResult{Ok: true}, nil
 	}
 
@@ -243,7 +276,7 @@ func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 
 		conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
-			log.Printf("GET connect failed %s: %v", addr, err)
+			logger.Warn(log, "GET connect failed %s: %v", addr, err)
 			continue
 		}
 
@@ -270,68 +303,228 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 	ctx := context.WithValue(context.Background(), logger.RequestIDKey, reqID)
 	log := logger.WithContext(ctx, logger.Leader)
 
-	log.Printf("TCP client connected: %s", conn.RemoteAddr())
+	logger.Info(log, "TCP client connected: %s", conn.RemoteAddr())
 
-	scanner := bufio.NewScanner(conn)
+	reader := bufio.NewScanner(conn)
+	writer := bufio.NewWriter(conn)
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		parts := strings.SplitN(line, " ", 3)
+	// -------- Banner --------
+	banner := []string{
+		"--------------------------------------------------",
+		"TOLEREX - Distributed Storage Leader Node",
+		"--------------------------------------------------",
+		"",
+		"Commands:",
+		"",
+		"  SET <id> <message>   Store a message",
+		"  GET <id>             Retrieve a message",
+		"  PWD                  Show current directory",
+		"  CD <dir>             Change directory",
+		"  DIR                  List directory contents",
+		"  HELP                 Show this help",
+		"  QUIT | EXIT          Close connection",
+		"",
+		"--------------------------------------------------",
+	}
 
-		if len(parts) < 2 {
-			conn.Write([]byte("ERROR: invalid command\n"))
+	for _, line := range banner {
+		fmt.Fprint(writer, line+"\r\n")
+	}
+	fmt.Fprint(writer, "tolerex> ")
+	writer.Flush()
+
+	// -------- Command loop --------
+	for reader.Scan() {
+		line := strings.TrimSpace(reader.Text())
+		if line == "" {
+			fmt.Fprint(writer, "tolerex> ")
+			writer.Flush()
 			continue
 		}
 
+		parts := strings.Fields(line)
 		cmd := strings.ToUpper(parts[0])
-		id, err := strconv.Atoi(parts[1])
-		if err != nil {
-			conn.Write([]byte("ERROR: id must be numeric\n"))
-			continue
-		}
 
 		switch cmd {
+
+		// -------- SET --------
 		case "SET":
-			if len(parts) != 3 {
-				conn.Write([]byte("ERROR: SET needs message\n"))
-				continue
-			}
-			msg := &pb.StoredMessage{Id: int32(id), Text: parts[2]}
-			res, _ := s.Store(ctx, msg)
-			if res != nil && res.Ok {
-				conn.Write([]byte("OK\n"))
-			} else {
-				errMsg := "unknown"
-				if res != nil {
-					errMsg = res.Err
-				}
-				conn.Write([]byte("ERROR: " + errMsg + "\n"))
+			if len(parts) < 3 {
+				fmt.Fprint(writer, "ERROR: SET <id> <message>\r\n")
+				break
 			}
 
+			id, err := strconv.Atoi(parts[1])
+			if err != nil {
+				fmt.Fprint(writer, "ERROR: id must be numeric\r\n")
+				break
+			}
+
+			msg := strings.Join(parts[2:], " ")
+			res, _ := s.Store(ctx, &pb.StoredMessage{
+				Id:   int32(id),
+				Text: msg,
+			})
+
+			if res != nil && res.Ok {
+				fmt.Fprint(writer, "OK\r\n")
+			} else {
+				fmt.Fprint(writer, "ERROR: store failed\r\n")
+			}
+
+		// -------- GET --------
 		case "GET":
+			if len(parts) != 2 {
+				fmt.Fprint(writer, "ERROR: GET <id>\r\n")
+				break
+			}
+
+			id, err := strconv.Atoi(parts[1])
+			if err != nil {
+				fmt.Fprint(writer, "ERROR: id must be numeric\r\n")
+				break
+			}
+
 			res, _ := s.Retrieve(ctx, &pb.MessageID{Id: int32(id)})
 			if res != nil && res.Text != "" {
-				conn.Write([]byte(res.Text + "\n"))
+				fmt.Fprint(writer, res.Text+"\r\n")
 			} else {
-				conn.Write([]byte("NOT_FOUND\n"))
+				fmt.Fprint(writer, "NOT_FOUND\r\n")
 			}
 
+		// -------- PWD --------
+		case "PWD":
+			dir, err := os.Getwd()
+			if err != nil {
+				fmt.Fprint(writer, "ERROR: cannot get pwd\r\n")
+			} else {
+				fmt.Fprint(writer, dir+"\r\n")
+			}
+
+		// -------- CD --------
+		case "CD":
+			if len(parts) != 2 {
+				fmt.Fprint(writer, "ERROR: CD <dir>\r\n")
+				break
+			}
+
+			if err := os.Chdir(parts[1]); err != nil {
+				fmt.Fprint(writer, "ERROR: cannot change directory\r\n")
+			} else {
+				fmt.Fprint(writer, "OK\r\n")
+			}
+
+		// -------- DIR --------
+		case "DIR":
+			files, err := os.ReadDir(".")
+			if err != nil {
+				fmt.Fprint(writer, "ERROR: cannot read directory\r\n")
+				break
+			}
+
+			for _, f := range files {
+				fmt.Fprint(writer, f.Name()+"\r\n")
+			}
+			fmt.Fprint(writer, "END\r\n")
+
+		// -------- HELP --------
+		case "HELP":
+			for _, line := range banner {
+				fmt.Fprint(writer, line+"\r\n")
+			}
+
+		// -------- QUIT / EXIT --------
+		case "QUIT", "EXIT":
+			fmt.Fprint(writer, "Bye \r\n")
+			writer.Flush()
+			return
+
+		// -------- UNKNOWN --------
 		default:
-			conn.Write([]byte("ERROR: unknown command\n"))
+			fmt.Fprint(writer, "ERROR: unknown command\r\n")
 		}
+
+		fmt.Fprint(writer, "tolerex> ")
+		writer.Flush()
 	}
+
+	if err := reader.Err(); err != nil {
+		logger.Warn(log, "TCP client error: %v", err)
+	}
+}
+
+func (s *LeaderServer) saveState() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.saveStateUnsafe()
+}
+
+// s.mu kilidi tutulmuşken çağrılmalı
+func (s *LeaderServer) saveStateUnsafe() error {
+	members := append([]string(nil), s.Members...)
+
+	memberLog := make(map[string]*MemberInfo, len(s.MemberLog))
+	for k, v := range s.MemberLog {
+		if v == nil {
+			continue
+		}
+		cp := *v
+		memberLog[k] = &cp
+	}
+
+	msgMap := make(map[int][]string, len(s.MsgMap))
+	for id, addrs := range s.MsgMap {
+		msgMap[id] = append([]string(nil), addrs...)
+	}
+
+	data, err := json.MarshalIndent(LeaderState{
+		Members:   members,
+		MemberLog: memberLog,
+		MsgMap:    msgMap,
+	}, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	_ = os.MkdirAll("internal/data", 0755)
+	return os.WriteFile("internal/data/leader_state.json", data, 0644)
+}
+
+func (s *LeaderServer) loadState() error {
+	data, err := os.ReadFile("internal/data/leader_state.json")
+	if err != nil {
+		return nil
+	}
+
+	var state LeaderState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.Members = state.Members
+	s.MemberLog = state.MemberLog
+	s.MsgMap = state.MsgMap
+	return nil
 }
 
 // -------- Üye istatistikleri
 func (s *LeaderServer) PrintMemberStats() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Terminali temizle
-	fmt.Print("\033[2J\033[H")
-
-	fmt.Println("==== MEMBER STATUS (LIVE VIEW) ====")
+	snapshot := make([]MemberInfo, 0, len(s.MemberLog))
 	for _, info := range s.MemberLog {
+		if info == nil {
+			continue
+		}
+		snapshot = append(snapshot, *info)
+	}
+	s.mu.Unlock()
+
+	fmt.Print("\033[2J\033[H")
+	fmt.Println("==== MEMBER STATUS (LIVE VIEW) ====")
+	for _, info := range snapshot {
 		fmt.Printf(
 			"Addr=%s | Alive=%v | LastSeen=%s | MsgCnt=%d\n",
 			info.Address,

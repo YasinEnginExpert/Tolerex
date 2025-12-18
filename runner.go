@@ -79,5 +79,5 @@ func main() {
 		)
 	}
 
-	fmt.Println("🎉 Tüm terminaller başarıyla açıldı")
+	fmt.Println("Tüm terminaller başarıyla açıldı")
 }

@@ -21,43 +21,46 @@ import (
 )
 
 func main() {
-	//--- Loglama Islemi ---
+	// -------- Logger init --------
 	logger.Init()
-	logger.Member.Println("Member server starting...")
+	logger.SetLevel(logger.INFO)
 
-	//--- Parametre Tahsisi ---
+	log := logger.Member
+	logger.Info(log, "Member server starting...")
+
+	/// -------- Params --------
 	port := flag.String("port", "5556", "gRPC port")
 	flag.Parse()
 
-	// --- Sabit adres---
 	leaderAddr := "localhost:5555"
-
 	myAddr := "localhost:" + *port
 
-	//--- islem bitince sil---
+	// -------- Data dir --------
 	dataDir := filepath.Join("internal", "data", "member-"+*port)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		log.Fatalf("DataDir oluşturulamadı: %v", err)
+		logger.Fatal(log, "DataDir oluşturulamadı: %v", err)
 	}
 	cleanup := func() {
 		os.RemoveAll(dataDir)
 	}
 	defer cleanup()
 
+	// -------- Signal handling --------
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		<-sig
+		logger.Warn(log, "Shutdown signal received, cleaning up")
 		cleanup()
 		os.Exit(0)
 	}()
 
-	//--- gRPC sunucusu ayrı goroutine'de başlatılır
+	// -------- gRPC Server --------
 	go func() {
 		listener, err := net.Listen("tcp", ":"+*port)
 		if err != nil {
-			log.Fatalf("Port dinlenemedi: %v", err)
+			logger.Fatal(log, "Port dinlenemedi: %v", err)
 		}
 
 		grpcServer := grpc.NewServer(
@@ -74,28 +77,31 @@ func main() {
 		}
 		proto.RegisterStorageServiceServer(grpcServer, member)
 
-		log.Printf("Member running on port %s, dataDir=%s\n", *port, dataDir)
+		logger.Info(log, "Member running on port %s, dataDir=%s", *port, dataDir)
+
 		if err := grpcServer.Serve(listener); err != nil {
-			log.Fatalf("gRPC başlatılamadı: %v", err)
+			logger.Fatal(log, "gRPC başlatılamadı: %v", err)
 		}
 	}()
 
-	//--- Lider sunucuya kayıt---
-	time.Sleep(500 * time.Millisecond) // sunucu hazır olana kadar bekle
-	registerToLeader(leaderAddr, myAddr)
-	startHeartbeat(leaderAddr, myAddr)
+	// -------- Register to leader --------
+	time.Sleep(500 * time.Millisecond)
+	registerToLeader(log, leaderAddr, myAddr)
+
+	// -------- Heartbeat --------
+	startHeartbeat(log, leaderAddr, myAddr)
 
 	select {} // programı açık tut
 }
 
-func registerToLeader(leaderAddr, myAddr string) {
+func registerToLeader(log *log.Logger, leaderAddr, myAddr string) {
 	conn, err := grpc.Dial(
 		leaderAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 
 	if err != nil {
-		log.Fatalf("Lider bağlantı hatası: %v", err)
+		logger.Fatal(log, "Lider bağlantı hatası: %v", err)
 	}
 	defer conn.Close()
 
@@ -105,12 +111,12 @@ func registerToLeader(leaderAddr, myAddr string) {
 
 	_, err = client.RegisterMember(ctx, &proto.MemberInfo{Address: myAddr})
 	if err != nil {
-		log.Fatalf("Lider kaydı başarısız: %v", err)
+		logger.Fatal(log, "Lider kaydı başarısız: %v", err)
 	}
 	log.Printf("Lider sunucuya başarıyla kaydedildi: %s", myAddr)
 }
 
-func startHeartbeat(leaderAddr, myAddr string) {
+func startHeartbeat(log *log.Logger, leaderAddr, myAddr string) {
 	go func() {
 		for {
 			conn, err := grpc.Dial(
@@ -118,7 +124,7 @@ func startHeartbeat(leaderAddr, myAddr string) {
 				grpc.WithTransportCredentials(insecure.NewCredentials()),
 			)
 			if err != nil {
-				log.Printf("[HB] Leader unreachable: %v", err)
+				logger.Warn(log, "Leader unreachable: %v", err)
 				time.Sleep(5 * time.Second)
 				continue
 			}
@@ -134,7 +140,7 @@ func startHeartbeat(leaderAddr, myAddr string) {
 			conn.Close()
 
 			if err != nil {
-				log.Printf("[HB] Heartbeat failed: %v", err)
+				logger.Warn(log, "Heartbeat failed: %v", err)
 			}
 
 			time.Sleep(5 * time.Second)
