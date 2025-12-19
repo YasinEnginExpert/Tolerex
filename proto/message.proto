@@ -1,59 +1,113 @@
 syntax = "proto3";
 
+// ===================================================================================
+// TOLEREX – STORAGE SERVICE PROTOCOL (gRPC / PROTOBUF IDL)
+// ===================================================================================
+//
+// This file defines the canonical gRPC interface and message schemas used
+// by the Tolerex distributed storage system.
+//
+// From a distributed systems perspective, this file represents:
+//
+// - The single source of truth for network-level contracts
+// - A language-agnostic API definition (IDL)
+// - A strict boundary between Leader and Member responsibilities
+//
+// Design principles:
+//
+// - Proto3 syntax for simplicity and forward compatibility
+// - Explicit message definitions for all RPC interactions
+// - Separation of concerns between control-plane and data-plane operations
+// - Stable field numbering to preserve backward compatibility
+//
+// Any change to this file is a **breaking change** unless field numbers
+// are preserved and semantics remain compatible.
+//
+// ===================================================================================
+
 package proto;
+
+// --- GO CODE GENERATION TARGET ---
+// Generated Go code will be placed under:
+//   tolerex/proto/gen
 option go_package = "/gen;proto";
 
 import "google/protobuf/empty.proto";
 
-// ==========================
-//  Message Definitions
-// ==========================
+// ===================================================================================
+// MESSAGE DEFINITIONS
+// ===================================================================================
 
-// Mesajı diske yazmak için kullanılan veri
+// --- STORED MESSAGE ---
+// Represents a message payload to be persisted by a Member node.
+//
+// Used by:
+// - Store RPC (Leader → Member)
 message StoredMessage {
-    int32 id = 1;      // benzersiz mesaj kimliği
-    string text = 2;   // mesaj içeriği
+    int32 id = 1;      // Unique message identifier
+    string text = 2;   // Message payload
 }
 
-// Retrieve operasyonunda sadece ID gönderilir
+// --- MESSAGE IDENTIFIER ---
+// Lightweight request containing only the message ID.
+//
+// Used by:
+// - Retrieve RPC (Leader → Member)
 message MessageID {
-    int32 id = 1;
+    int32 id = 1;      // Unique message identifier
 }
 
-// Store sonucunu dönen yapı
+// --- STORE RESULT ---
+// Represents the outcome of a Store operation.
 message StoreResult {
-    bool ok = 1;       // işlem başarılı mı?
-    string err = 2;    // hata varsa açıklaması
+    bool ok = 1;       // Indicates whether the operation succeeded
+    string err = 2;    // Error description if ok == false
 }
 
+// --- MEMBER INFO ---
+// Identifies a Member node by its network address.
+//
+// Used by:
+// - RegisterMember RPC (Member → Leader)
 message MemberInfo {
-    string address = 1; // Üyenin IP:port adresi
+    string address = 1; // Member address in IP:port format
 }
 
+// --- REGISTRATION REPLY ---
+// Represents the result of a Member registration request.
 message RegisterReply {
-    bool ok = 1;
-    string err = 2;
+    bool ok = 1;       // Indicates whether registration succeeded
+    string err = 2;    // Error description if registration failed
 }
 
-message HeartbeatRequest  {
-    string address = 1;
+// --- HEARTBEAT REQUEST ---
+// Periodic liveness signal sent by a Member to the Leader.
+message HeartbeatRequest {
+    string address = 1; // Member address in IP:port format
 }
 
+// ===================================================================================
+// gRPC STORAGE SERVICE DEFINITION
+// ===================================================================================
 
-// ==========================
-//  gRPC Storage Service
-// ==========================
+// --- STORAGE SERVICE ---
+// Defines all RPCs used for coordination and data transfer
+// between Leader and Member nodes.
 service StorageService {
-    // Lider mesajı gönderir, üye diske kaydeder
+
+    // --- STORE ---
+    // Leader sends a message to a Member for persistence.
     rpc Store(StoredMessage) returns (StoreResult);
 
-    // Lider belirli bir ID'yi ister, üye mesajı döner
+    // --- RETRIEVE ---
+    // Leader requests a specific message by ID from a Member.
     rpc Retrieve(MessageID) returns (StoredMessage);
 
-    // Üye lider'e kendini kaydeder
+    // --- REGISTER MEMBER ---
+    // Member registers itself with the Leader.
     rpc RegisterMember(MemberInfo) returns (RegisterReply);
 
-    // Üye hayatta olduğunu bildirir
-    rpc Heartbeat(HeartbeatRequest ) returns (google.protobuf.Empty);
+    // --- HEARTBEAT ---
+    // Member periodically signals liveness to the Leader.
+    rpc Heartbeat(HeartbeatRequest) returns (google.protobuf.Empty);
 }
-
