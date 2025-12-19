@@ -3,6 +3,7 @@ package logger
 import (
 	"context"
 	"log"
+	"os"
 
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -35,7 +36,6 @@ func enabled(level Level) bool {
 func SetLevel(level Level) {
 	currentLevel = level
 }
-
 
 func Init() {
 	writer := &lumberjack.Logger{
@@ -92,5 +92,5 @@ func Error(log *log.Logger, format string, v ...any) {
 
 func Fatal(log *log.Logger, format string, v ...any) {
 	log.Printf("[FATAL] "+format, v...)
-	panic("fatal error occurred")
+	os.Exit(1)
 }

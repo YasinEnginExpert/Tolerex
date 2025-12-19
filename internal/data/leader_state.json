@@ -1,0 +1,36 @@
+{
+  "Members": [
+    "localhost:5556",
+    "localhost:5557",
+    "localhost:5558"
+  ],
+  "MemberLog": {
+    "localhost:5556": {
+      "Address": "localhost:5556",
+      "AddedAt": "2025-12-19T18:43:42.0738938+03:00",
+      "MessageCnt": 1,
+      "LastSeen": "2025-12-19T18:44:17.2125439+03:00",
+      "Alive": true
+    },
+    "localhost:5557": {
+      "Address": "localhost:5557",
+      "AddedAt": "2025-12-19T18:43:42.0868285+03:00",
+      "MessageCnt": 1,
+      "LastSeen": "2025-12-19T18:44:17.2183298+03:00",
+      "Alive": true
+    },
+    "localhost:5558": {
+      "Address": "localhost:5558",
+      "AddedAt": "2025-12-19T18:43:42.1129334+03:00",
+      "MessageCnt": 0,
+      "LastSeen": "2025-12-19T18:44:17.2434077+03:00",
+      "Alive": true
+    }
+  },
+  "MsgMap": {
+    "10": [
+      "localhost:5556",
+      "localhost:5557"
+    ]
+  }
+}

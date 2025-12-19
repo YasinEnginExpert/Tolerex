@@ -15,10 +15,10 @@ import (
 
 	"tolerex/internal/config"
 	"tolerex/internal/logger"
+	"tolerex/internal/security"
 	pb "tolerex/proto/gen"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -46,6 +46,8 @@ type LeaderServer struct {
 	MemberLog map[string]*MemberInfo
 	mu        sync.Mutex
 	DataDir   string
+
+	memberDialOpt grpc.DialOption
 }
 
 // --- Kaydeilecek bilgiler
@@ -76,6 +78,8 @@ func (s *LeaderServer) Heartbeat(ctx context.Context, hb *pb.HeartbeatRequest) (
 
 // -------- Üyeleri periyodik kontrol eder
 func (s *LeaderServer) StartHeartbeatWatcher() {
+	logger.Info(logger.Leader, "Heartbeat watcher started (timeout=15s, interval=5s)")
+
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
@@ -90,9 +94,13 @@ func (s *LeaderServer) StartHeartbeatWatcher() {
 				}
 				if now.Sub(m.LastSeen) > 15*time.Second {
 					if m.Alive {
-						logger.Warn(logger.Leader, "Member down: %s", m.Address)
+						logger.Warn(logger.Leader,
+							"Member marked DOWN: addr=%s lastSeen=%s",
+							m.Address,
+							m.LastSeen.Format(time.RFC3339),
+						)
 						m.Alive = false
-						_ = s.saveStateUnsafe() // lock altındayız
+						_ = s.saveStateUnsafe()
 					}
 				}
 			}
@@ -130,6 +138,17 @@ func NewLeaderServer(members []string, toleranceFile string) (*LeaderServer, err
 		MemberLog: memberLog,
 	}
 
+	creds, err := security.NewMTLSClientCreds(
+		"config/tls/leader.crt",
+		"config/tls/leader.key",
+		"config/tls/ca.crt",
+		"member",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init leader->member mTLS creds: %w", err)
+	}
+	leader.memberDialOpt = grpc.WithTransportCredentials(creds)
+
 	if err := leader.loadState(); err != nil {
 		logger.Warn(logger.Leader, "Failed to load leader state: %v", err)
 	}
@@ -146,6 +165,9 @@ func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (
 
 	addr := req.Address
 	if m, exists := s.MemberLog[addr]; exists {
+		if !m.Alive {
+			logger.Info(log, "Member recovered: %s", addr)
+		}
 		m.Alive = true
 		m.LastSeen = time.Now()
 		return &pb.RegisterReply{Ok: true}, nil
@@ -161,15 +183,27 @@ func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (
 		Alive:      true,
 	}
 
-	_ = s.saveStateUnsafe() // lock altındayız
+	_ = s.saveStateUnsafe()
 
 	logger.Info(log, "New member registered: %s", addr)
 	return &pb.RegisterReply{Ok: true}, nil
 }
 
+func (s *LeaderServer) dialMember(addr string) (*grpc.ClientConn, error) {
+	logger.Debug(logger.Leader, "Dialing member %s with mTLS", addr)
+
+	// Dial ayrı timeout ile
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	return grpc.DialContext(ctx, addr, s.memberDialOpt)
+}
+
 // -------- SET (Store)
 func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.StoreResult, error) {
 	log := logger.WithContext(ctx, logger.Leader)
+
+	logger.Info(log, "Store request received: msg_id=%d tolerance=%d", msg.Id, s.Tolerance)
 
 	var stats []memberStat
 
@@ -207,7 +241,7 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 			break
 		}
 
-		conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := s.dialMember(addr)
 		if err != nil {
 			logger.Warn(log, "Connection error to %s: %v", addr, err)
 			continue
@@ -243,7 +277,9 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 		s.MsgMap[int(msg.Id)] = successful
 		s.mu.Unlock()
 
-		_ = s.saveState() // <-- SAFE (lock alır)
+		logger.Info(log, "Store replication successful: msg_id=%d replicas=%v", msg.Id, successful)
+
+		_ = s.saveState()
 		return &pb.StoreResult{Ok: true}, nil
 	}
 
@@ -253,6 +289,8 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 // -------- GET (Retrieve)
 func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.StoredMessage, error) {
 	log := logger.WithContext(ctx, logger.Leader)
+
+	logger.Info(log, "Retrieve request received: msg_id=%d", req.Id)
 
 	s.mu.Lock()
 	replicas, ok := s.MsgMap[int(req.Id)]
@@ -274,7 +312,7 @@ func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 			continue
 		}
 
-		conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := s.dialMember(addr)
 		if err != nil {
 			logger.Warn(log, "GET connect failed %s: %v", addr, err)
 			continue
@@ -437,6 +475,7 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 		case "QUIT", "EXIT":
 			fmt.Fprint(writer, "Bye \r\n")
 			writer.Flush()
+			logger.Info(log, "TCP client disconnected: %s", conn.RemoteAddr())
 			return
 
 		// -------- UNKNOWN --------
