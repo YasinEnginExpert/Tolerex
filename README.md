@@ -143,3 +143,43 @@ flowchart TB
     R2 -->|ACK| Leader
     RN -->|ACK| Leader
 ````
+
+## References & Learning Resources
+
+This project was developed by combining academic knowledge, industry best practices,
+and hands-on experimentation with distributed systems, networking, and Go programming.
+The following resources were used during the design and implementation phases:
+
+### Books
+
+- **Network Programming with Go**  
+  *Essential Skills for Programming, Using and Securing Networks with Open Source Google Golang*  
+  Jan Newmarch, Ronald Petty – 2nd Edition
+
+- **Distributed Services with Go**  
+  *Your Guide to Reliable, Scalable, and Maintainable Systems*  
+  Travis Jeffery  
+  Version: P1.0 (March 2021)
+
+- **System Programming Essentials with Go**  
+  *System calls, networking, efficiency, and security practices with practical projects*  
+  Alex Rios
+
+### Online Articles & Tutorials
+
+- Murat Demirci – *Go and gRPC*  
+  https://muratdemirci.com.tr/goandgrpc/
+
+### Online Courses
+
+- **Go Bootcamp with gRPC and Protocol Buffers** (Udemy)  
+  https://www.udemy.com/course/gobootcampwithgrpcandprotocolbuffers
+
+### Tools & Assistance
+
+- **ChatGPT**  
+  Used as an interactive assistant for:
+  - Architectural discussions
+  - Code review and refactoring
+  - Documentation improvement
+  - Conceptual explanations of distributed systems and Go internals
