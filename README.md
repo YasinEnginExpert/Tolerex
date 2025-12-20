@@ -143,6 +143,71 @@ flowchart TB
     R2 -->|ACK| Leader
     RN -->|ACK| Leader
 ````
+```text
+.
+├── go.mod
+├── go.sum
+├── LICENSE
+├── README.md
+│
+├── client
+│   └── test_client.go
+│
+├── cmd
+│   ├── cluster_launcher
+│   │   └── cluster_launcher.go
+│   ├── leader
+│   │   └── main.go
+│   └── member
+│       └── main.go
+│
+├── config
+│   ├── tolerance.conf
+│   └── tls
+│       ├── ca.crt
+│       ├── ca.key
+│       ├── client.cnf
+│       ├── client.crt
+│       ├── client.key
+│       ├── leader.cnf
+│       ├── leader.crt
+│       ├── leader.key
+│       ├── member.cnf
+│       ├── member.crt
+│       └── member.key
+│
+├── internal
+│   ├── config
+│   │   └── config.go
+│   ├── data
+│   │   └── leader_state.json
+│   ├── logger
+│   │   └── logger.go
+│   ├── metrics
+│   │   └── metrics.go
+│   ├── middleware
+│   │   ├── interceptors.go
+│   │   ├── logging.go
+│   │   ├── metrics.go
+│   │   └── recovery.go
+│   ├── security
+│   │   └── mtls.go
+│   ├── server
+│   │   ├── leader.go
+│   │   └── member.go
+│   └── storage
+│       ├── reader.go
+│       └── writer.go
+│
+├── logs
+│   └── tolerex.log
+│
+└── proto
+    ├── message.proto
+    └── gen
+        ├── message.pb.go
+        └── message_grpc.pb.go
+```
 
 ## References & Learning Resources
 
@@ -182,4 +247,5 @@ The following resources were used during the design and implementation phases:
   - Architectural discussions
   - Code review and refactoring
   - Documentation improvement
+
   - Conceptual explanations of distributed systems and Go internals
