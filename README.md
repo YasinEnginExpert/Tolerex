@@ -143,12 +143,172 @@ flowchart TB
     R2 -->|ACK| Leader
     RN -->|ACK| Leader
 ````
+---
+### Project Structure
+```text
+.
+├── go.mod
+├── go.sum
+├── LICENSE
+├── README.md
+│
+├── client
+│   └── test_client.go
+│
+├── cmd
+│   ├── cluster_launcher
+│   │   └── cluster_launcher.go
+│   ├── leader
+│   │   └── main.go
+│   └── member
+│       └── main.go
+│
+├── config
+│   ├── tolerance.conf
+│   └── tls
+│       ├── ca.crt
+│       ├── ca.key
+│       ├── client.cnf
+│       ├── client.crt
+│       ├── client.key
+│       ├── leader.cnf
+│       ├── leader.crt
+│       ├── leader.key
+│       ├── member.cnf
+│       ├── member.crt
+│       └── member.key
+│
+├── internal
+│   ├── config
+│   │   └── config.go
+│   ├── data
+│   │   └── leader_state.json
+│   ├── logger
+│   │   └── logger.go
+│   ├── metrics
+│   │   └── metrics.go
+│   ├── middleware
+│   │   ├── interceptors.go
+│   │   ├── logging.go
+│   │   ├── metrics.go
+│   │   └── recovery.go
+│   ├── security
+│   │   └── mtls.go
+│   ├── server
+│   │   ├── leader.go
+│   │   └── member.go
+│   └── storage
+│       ├── reader.go
+│       └── writer.go
+│
+├── logs
+│   └── tolerex.log
+│
+└── proto
+    ├── message.proto
+    └── gen
+        ├── message.pb.go
+        └── message_grpc.pb.go
+```
+---
 
-## References & Learning Resources
+### Development Environment
+This project is developed using Visual Studio Code with the following recommended extensions for an efficient Go + gRPC + Protobuf workflow:
 
-This project was developed by combining academic knowledge, industry best practices,
-and hands-on experimentation with distributed systems, networking, and Go programming.
-The following resources were used during the design and implementation phases:
+- **Go (Go Team at Google)** – Go language support, formatting, and debugging
+- **protobuf (kanging)** – Protobuf syntax highlightin
+- **Proto Lint (Plex Systems)** – Protobuf linting and best practices
+- **Error Lens (Alexander)** – Inline error highlighting
+- **Better Comments (Aaron Bond)** – Improved code comment readability
+- **Prettier (Prettier)** – Formatting for Markdown and configuration files
+- **vscode-icons (VSCode Icons Team)** – Enhanced file explorer visuals
+- **Docker (Microsoft, optional)** – Containerized development and testing
+
+---
+
+## Dependencies
+
+The following Go libraries and frameworks are used in this project.
+
+### Core Dependencies
+
+- **google.golang.org/grpc**  
+  Provides high-performance, type-safe RPC communication between distributed nodes.
+
+- **google.golang.org/protobuf**  
+  Used for defining and serializing structured gRPC messages.
+
+- **github.com/google/uuid**  
+  Generates universally unique identifiers (UUIDs) for requests and node identification.
+
+- **github.com/prometheus/client_golang**  
+  Exposes application metrics such as request counts and latency.
+
+- **gopkg.in/natefinch/lumberjack.v2**  
+  Handles log rotation and log file management.
+
+
+## Observability and Instrumentation
+
+The project uses OpenTelemetry for distributed tracing and metrics collection.
+
+- **go.opentelemetry.io/otel**  
+  Core OpenTelemetry API used for distributed tracing and observability.
+
+- **go.opentelemetry.io/otel/sdk**  
+  OpenTelemetry SDK implementation used to configure telemetry pipelines and exporters.
+
+- **go.opentelemetry.io/otel/trace**  
+  Tracing API for tracking request lifecycles across distributed gRPC calls.
+
+- **go.opentelemetry.io/otel/metric**  
+  Metrics API used for application-level instrumentation.
+
+## Supporting and Indirect Dependencies
+
+The following libraries are included indirectly as part of the dependency graph and are not
+used directly in the application code:
+
+- **github.com/prometheus/common**  
+  Shared utilities for Prometheus clients.
+
+- **github.com/prometheus/client_model**  
+  Prometheus data model definitions.
+
+- **github.com/prometheus/procfs**  
+  Access to process and system metrics.
+
+- **github.com/cespare/xxhash/v2**  
+  High-performance hashing functions.
+
+- **github.com/beorn7/perks**  
+  Performance optimizations used by Prometheus.
+
+- **golang.org/x/net**  
+  Extended networking utilities.
+
+- **golang.org/x/sys**  
+  Low-level operating system abstractions.
+
+- **golang.org/x/text**  
+  Text processing and encoding support.
+
+- **google.golang.org/genproto**  
+  Generated Protocol Buffer definitions for Google APIs.
+
+- **go.yaml.in/yaml/v2**  
+  YAML parsing library used for configuration handling.
+
+## Dependency Management
+
+All dependencies are managed using **Go Modules**.
+To download and verify all required packages, run:
+
+```bash
+go mod tidy
+go mod download
+```
+---
 
 ### Books
 
@@ -182,4 +342,6 @@ The following resources were used during the design and implementation phases:
   - Architectural discussions
   - Code review and refactoring
   - Documentation improvement
+
   - Conceptual explanations of distributed systems and Go internals
+
