@@ -71,6 +71,8 @@ import (
 	pb "tolerex/proto/gen"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -114,11 +116,13 @@ type LeaderServer struct {
 	// --- SHARED STATE LOCK ---
 	mu sync.Mutex
 
-	// --- (OPTIONAL) DATA DIRECTORY / FUTURE EXTENSIONS ---
-	DataDir string
-
 	// --- DIAL OPTION FOR LEADER → MEMBER (mTLS) ---
 	memberDialOpt grpc.DialOption
+
+	// --- Runtime listeners (introspection only) ---
+	TcpListener  net.Listener // TCP CLI (telnet-style console)
+	GrpcListener net.Listener // gRPC service listener
+
 }
 
 // --- PERSISTED LEADER STATE ---
@@ -129,6 +133,12 @@ type LeaderState struct {
 	MemberLog map[string]*MemberInfo
 	MsgMap    map[int][]string
 }
+
+const (
+	heartbeatTimeout  = 15 * time.Second
+	heartbeatInterval = 5 * time.Second
+	rpcTimeout        = 2 * time.Second
+)
 
 // ===================================================================================
 // gRPC: HEARTBEAT
@@ -166,7 +176,7 @@ func (s *LeaderServer) StartHeartbeatWatcher() {
 	logger.Info(logger.Leader, "Heartbeat watcher started (timeout=15s, interval=5s)")
 
 	go func() {
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(heartbeatInterval)
 		defer ticker.Stop()
 
 		for range ticker.C {
@@ -177,7 +187,7 @@ func (s *LeaderServer) StartHeartbeatWatcher() {
 				if m.LastSeen.IsZero() {
 					m.LastSeen = m.AddedAt
 				}
-				if now.Sub(m.LastSeen) > 15*time.Second {
+				if now.Sub(m.LastSeen) > heartbeatTimeout {
 					if m.Alive {
 						logger.Warn(logger.Leader,
 							"Member marked DOWN: addr=%s lastSeen=%s",
@@ -301,11 +311,15 @@ func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (
 func (s *LeaderServer) dialMember(addr string) (*grpc.ClientConn, error) {
 	logger.Debug(logger.Leader, "Dialing member %s with mTLS", addr)
 
-	// --- BOUNDED DIAL TIMEOUT ---
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
 
-	return grpc.DialContext(ctx, addr, s.memberDialOpt)
+	return grpc.DialContext(
+		ctx,
+		addr,
+		s.memberDialOpt,
+		grpc.WithBlock(),
+	)
 }
 
 // ===================================================================================
@@ -356,7 +370,11 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 
 	for _, addr := range selected {
 		if len(successful) == tol {
-			break
+			s.mu.Lock()
+			s.MsgMap[int(msg.Id)] = successful
+			s.mu.Unlock()
+			_ = s.saveState()
+			return &pb.StoreResult{Ok: true}, nil
 		}
 
 		conn, err := s.dialMember(addr)
@@ -368,7 +386,7 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 		client := pb.NewStorageServiceClient(conn)
 
 		// --- PER-CALL TIMEOUT ---
-		ctx2, cancel := context.WithTimeout(ctx, 2*time.Second)
+		ctx2, cancel := context.WithTimeout(ctx, rpcTimeout)
 		res, callErr := client.Store(ctx2, msg)
 		cancel()
 		conn.Close()
@@ -383,13 +401,15 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 			}
 			s.mu.Unlock()
 		} else {
-			// --- FAILURE PATH ---
-			logger.Error(log, "Failed to store on member %s: %v", addr, callErr)
-			s.mu.Lock()
-			if s.MemberLog[addr] != nil {
-				s.MemberLog[addr].Alive = false
-			}
-			s.mu.Unlock()
+			// Replication failure does NOT imply member failure.
+			// Liveness is decided exclusively by the heartbeat watcher.
+			logger.Error(
+				log,
+				"Replication failed: msg_id=%d member=%s err=%v",
+				msg.Id,
+				addr,
+				callErr,
+			)
 		}
 	}
 
@@ -450,7 +470,7 @@ func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 
 		client := pb.NewStorageServiceClient(conn)
 
-		ctx2, cancel := context.WithTimeout(ctx, 2*time.Second)
+		ctx2, cancel := context.WithTimeout(ctx, rpcTimeout)
 		res, callErr := client.Retrieve(ctx2, req)
 		cancel()
 		conn.Close()
@@ -460,9 +480,15 @@ func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 		}
 	}
 
-	// NOTE: Preserves original behavior (returns nil, nil if not found)
-	return nil, nil
+	// If not found on any candidate, return NotFound.
+	return nil, status.Error(codes.NotFound, "message not found")
 }
+
+// leaderListeningPorts returns TCP listening sockets owned
+// by the current leader process.
+//
+// This is strictly read-only introspection.
+// No user-controlled command execution is performed.
 
 // ===================================================================================
 // TCP CONTROL PLANE (LOCAL OPERATOR INTERFACE)
@@ -494,9 +520,6 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 		"",
 		"  SET <id> <message>   Store a message",
 		"  GET <id>             Retrieve a message",
-		"  PWD                  Show current directory",
-		"  CD <dir>             Change directory",
-		"  DIR                  List directory contents",
 		"  HELP                 Show this help",
 		"  QUIT | EXIT          Close connection",
 		"",
@@ -522,7 +545,6 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 		cmd := strings.ToUpper(parts[0])
 
 		switch cmd {
-
 		// --- SET (STORE) ---
 		case "SET":
 			if len(parts) < 3 {
@@ -561,48 +583,17 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 				break
 			}
 
-			res, _ := s.Retrieve(ctx, &pb.MessageID{Id: int32(id)})
-			if res != nil && res.Text != "" {
-				fmt.Fprint(writer, res.Text+"\r\n")
-			} else {
-				fmt.Fprint(writer, "NOT_FOUND\r\n")
-			}
-
-		// --- PWD ---
-		case "PWD":
-			dir, err := os.Getwd()
+			res, err := s.Retrieve(ctx, &pb.MessageID{Id: int32(id)})
 			if err != nil {
-				fmt.Fprint(writer, "ERROR: cannot get pwd\r\n")
-			} else {
-				fmt.Fprint(writer, dir+"\r\n")
-			}
-
-		// --- CD ---
-		case "CD":
-			if len(parts) != 2 {
-				fmt.Fprint(writer, "ERROR: CD <dir>\r\n")
+				st, ok := status.FromError(err)
+				if ok && st.Code() == codes.NotFound {
+					fmt.Fprint(writer, "NOT_FOUND\r\n")
+				} else {
+					fmt.Fprint(writer, "ERROR: retrieve failed\r\n")
+				}
 				break
 			}
-
-			if err := os.Chdir(parts[1]); err != nil {
-				fmt.Fprint(writer, "ERROR: cannot change directory\r\n")
-			} else {
-				fmt.Fprint(writer, "OK\r\n")
-			}
-
-		// --- DIR ---
-		case "DIR":
-			files, err := os.ReadDir(".")
-			if err != nil {
-				fmt.Fprint(writer, "ERROR: cannot read directory\r\n")
-				break
-			}
-
-			for _, f := range files {
-				fmt.Fprint(writer, f.Name()+"\r\n")
-			}
-			fmt.Fprint(writer, "END\r\n")
-
+			fmt.Fprint(writer, res.Text+"\r\n")
 		// --- HELP ---
 		case "HELP":
 			for _, line := range banner {
@@ -649,6 +640,7 @@ func (s *LeaderServer) saveStateUnsafe() error {
 
 	// --- DEEP COPY MEMBER LOG ---
 	memberLog := make(map[string]*MemberInfo, len(s.MemberLog))
+
 	for k, v := range s.MemberLog {
 		if v == nil {
 			continue
@@ -683,7 +675,10 @@ func (s *LeaderServer) saveStateUnsafe() error {
 func (s *LeaderServer) loadState() error {
 	data, err := os.ReadFile("internal/data/leader_state.json")
 	if err != nil {
-		return nil
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
 	}
 
 	var state LeaderState
@@ -696,6 +691,12 @@ func (s *LeaderServer) loadState() error {
 
 	s.Members = state.Members
 	s.MemberLog = state.MemberLog
+	if state.MemberLog == nil {
+		state.MemberLog = make(map[string]*MemberInfo)
+	}
+	if state.MsgMap == nil {
+		state.MsgMap = make(map[int][]string)
+	}
 	s.MsgMap = state.MsgMap
 	return nil
 }

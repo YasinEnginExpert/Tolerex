@@ -39,7 +39,7 @@ type StorageServiceClient interface {
 	// Lider mesajı gönderir, üye diske kaydeder
 	Store(ctx context.Context, in *StoredMessage, opts ...grpc.CallOption) (*StoreResult, error)
 	// Lider belirli bir ID'yi ister, üye mesajı döner
-	Retrieve(ctx context.Context, in *MessageID, opts ...grpc.CallOption) (*StoredMessage, error)
+	Retrieve(ctx context.Context, in *MessageID, opts ...grpc.CallOption) (*StoredMessage, error)	
 	// Üye lider'e kendini kaydeder
 	RegisterMember(ctx context.Context, in *MemberInfo, opts ...grpc.CallOption) (*RegisterReply, error)
 	// Üye hayatta olduğunu bildirir

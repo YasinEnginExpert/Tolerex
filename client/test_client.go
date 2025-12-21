@@ -1,166 +1,193 @@
-// ===================================================================================
-// TOLEREX – TCP CLIENT (INTERACTIVE CLI)
-// ===================================================================================
-//
-// This file implements a lightweight interactive TCP client for the Tolerex
-// Leader control interface.
-//
-// From a systems programming perspective, this client:
-//
-// - Establishes a persistent TCP connection to the Leader's local control port
-// - Implements automatic reconnection with retry logic
-// - Provides a synchronous, prompt-based command interface
-// - Parses and handles multi-line server responses (e.g., DIR output)
-// - Separates transport concerns from business logic
-//
-// This client communicates exclusively over the Leader's localhost-only
-// TCP control plane and is intentionally not secured with TLS,
-// as it is designed for operator-level local access.
-//
-// Supported commands include:
-// - SET
-// - GET
-// - DIR
-// - PWD
-// - QUIT
-//
-// ===================================================================================
-
 package main
 
 import (
 	"bufio"
+	"encoding/json"
+	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
 	"time"
 )
 
-// --- PROMPT DEFINITION ---
-// Server-side prompt marker used to detect
-// end-of-response boundaries.
-const PROMPT = "tolerex>"
+// ================= CONFIG =================
 
-// --- CONNECTION HANDSHAKE ---
-// Continuously attempts to establish a TCP connection
-// to the Leader until successful.
-func connect(address string) net.Conn {
+const (
+	DEFAULT_ADDR     = "localhost:6666"
+	DIAL_TIMEOUT     = 3 * time.Second
+	RETRY_DELAY      = 2 * time.Second
+	BULK_FLUSH_EVERY = 100
+	RESULT_FILE      = "results/measured_values.json"
+)
+
+// ================= FLAGS =================
+
+var (
+	addr  = flag.String("addr", DEFAULT_ADDR, "Leader TCP address (e.g., localhost:6666)")
+	count = flag.Int("count", 0, "Bulk SET count (0 = normal interactive)")
+)
+
+// ================= METRICS =================
+
+type ClientResult struct {
+	Mode      string `json:"io_mode"`
+	NodeCount int    `json:"node_count"`
+	Messages  int    `json:"messages"`
+	TotalMs   int64  `json:"total_ms"`
+	AvgUs     int64  `json:"avg_us"`
+}
+
+type ClusterRuntime struct {
+	IOMode    string `json:"io_mode"`
+	NodeCount int    `json:"node_count"`
+}
+
+func readClusterRuntime() ClusterRuntime {
+	var rt ClusterRuntime
+
+	path := "internal/data/cluster_runtime.json"
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return rt
+	}
+
+	_ = json.Unmarshal(data, &rt)
+
+	_ = os.Remove(path)
+
+	return rt
+}
+
+// ================= CONNECTION =================
+
+func connectLoop(address string) net.Conn {
 	for {
-		conn, err := net.Dial("tcp", address)
+		dialer := net.Dialer{Timeout: DIAL_TIMEOUT}
+		conn, err := dialer.Dial("tcp", address)
 		if err == nil {
-			fmt.Println("Connected to Leader successfully.")
+			if tcp, ok := conn.(*net.TCPConn); ok {
+				_ = tcp.SetNoDelay(true)
+			}
 			return conn
 		}
-		fmt.Println("Unable to connect to Leader, retrying...")
-		time.Sleep(2 * time.Second)
+		time.Sleep(RETRY_DELAY)
 	}
 }
 
+// ================= RESULT STORAGE =================
+
+func appendResultToFile(r ClientResult) {
+	_ = os.MkdirAll("results", 0755)
+
+	var results []ClientResult
+
+	if data, err := os.ReadFile(RESULT_FILE); err == nil && len(data) > 0 {
+		_ = json.Unmarshal(data, &results)
+	}
+
+	results = append(results, r)
+
+	if b, err := json.MarshalIndent(results, "", "  "); err == nil {
+		_ = os.WriteFile(RESULT_FILE, b, 0644)
+	}
+}
+
+// ================= MAIN =================
+
 func main() {
+	bulkDone := false
+	flag.Parse()
 
-	// --- LEADER CONTROL ADDRESS ---
-	// Localhost-only TCP control interface
-	address := "localhost:6666"
-
-	// --- INITIAL CONNECTION ---
-	conn := connect(address)
+	conn := connectLoop(*addr)
 	defer conn.Close()
 
-	// --- I/O STREAM SETUP ---
-	stdin := bufio.NewReader(os.Stdin)
-	reader := bufio.NewReader(conn)
+	// SERVER -> STDOUT (pure telnet behavior)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = io.Copy(os.Stdout, conn)
+	}()
+
+	// STDIN -> SERVER
+	stdin := bufio.NewScanner(os.Stdin)
 	writer := bufio.NewWriter(conn)
 
-	// --- INITIAL BANNER & PROMPT READ ---
-	// Reads server greeting until the first prompt appears
-	readUntilPrompt(reader)
-
 	for {
-		// --- USER INPUT ---
-		fmt.Print("> ")
-		line, _ := stdin.ReadString('\n')
-		line = strings.TrimSpace(line)
+		if !stdin.Scan() {
+			return
+		}
 
+		line := strings.TrimSpace(stdin.Text())
 		if line == "" {
 			continue
 		}
 
-		// --- EXIT HANDLING ---
-		if line == "exit" || line == "quit" {
-			fmt.Println("Exiting client...")
-			fmt.Fprintf(writer, "QUIT\r\n")
-			writer.Flush()
+		upper := strings.ToUpper(line)
+
+		// EXIT
+		if upper == "EXIT" || upper == "QUIT" {
+			_, _ = writer.WriteString("QUIT\r\n")
+			_ = writer.Flush()
+			<-done
 			return
 		}
 
-		// --- SEND COMMAND TO SERVER ---
-		_, err := fmt.Fprintf(writer, "%s\r\n", line)
-		writer.Flush()
-		if err != nil {
-			fmt.Println("Connection lost, reconnecting...")
-			conn.Close()
-			conn = connect(address)
-			reader = bufio.NewReader(conn)
-			writer = bufio.NewWriter(conn)
-			readUntilPrompt(reader)
+		// BULK SET MODE (MEASURE + JSON, NO EXTRA TERMINAL OUTPUT)
+		if *count > 0 && !bulkDone && strings.HasPrefix(upper, "SET ") {
+			parts := strings.SplitN(line, " ", 3)
+			if len(parts) < 3 {
+				// Orijinal davranış: kullanıcı uyarısı vardı
+				fmt.Println("Invalid SET format. Use: SET <id> <message>")
+				continue
+			}
+
+			baseMsg := parts[2]
+
+			start := time.Now()
+
+			for i := 1; i <= *count; i++ {
+				cmd := fmt.Sprintf("SET %d %s_%d\r\n", i, baseMsg, i)
+				if _, err := writer.WriteString(cmd); err != nil {
+					return
+				}
+
+				if i%BULK_FLUSH_EVERY == 0 {
+					if err := writer.Flush(); err != nil {
+						return
+					}
+				}
+			}
+
+			if err := writer.Flush(); err != nil {
+				return
+			}
+
+			total := time.Since(start)
+			avg := total / time.Duration(*count)
+
+			rt := readClusterRuntime()
+
+			appendResultToFile(ClientResult{
+				Mode:      rt.IOMode,
+				NodeCount: rt.NodeCount,
+				Messages:  *count,
+				TotalMs:   total.Milliseconds(),
+				AvgUs:     avg.Microseconds(),
+			})
+			
+
 			continue
 		}
 
-		// --- RESPONSE HANDLING ---
-		// DIR command returns multi-line output terminated with END
-		if strings.HasPrefix(strings.ToUpper(line), "DIR") {
-			readDirResponse(reader)
-		} else {
-			readUntilPrompt(reader)
-		}
-	}
-}
-
-// --- PROMPT-BASED RESPONSE READER ---
-// Reads raw bytes until the server prompt is detected.
-// Does not rely on newline boundaries.
-func readUntilPrompt(reader *bufio.Reader) {
-	var buf strings.Builder
-
-	for {
-		b, err := reader.ReadByte()
-		if err != nil {
-			fmt.Println("\nServer connection lost.")
-			os.Exit(1)
-		}
-
-		buf.WriteByte(b)
-		if strings.Contains(buf.String(), PROMPT) {
-			output := buf.String()
-			output = strings.ReplaceAll(output, PROMPT, "")
-			output = strings.Trim(output, "\r\n")
-			if output != "" {
-				fmt.Println(output)
-			}
+		// NORMAL COMMAND
+		if _, err := writer.WriteString(line + "\r\n"); err != nil {
 			return
 		}
-	}
-}
-
-// --- DIRECTORY RESPONSE READER ---
-// Reads line-by-line output until the END marker is received.
-// Used specifically for DIR command responses.
-func readDirResponse(reader *bufio.Reader) {
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Println("Failed to read DIR response.")
+		if err := writer.Flush(); err != nil {
 			return
 		}
-
-		line = strings.TrimRight(line, "\r\n")
-
-		if line == "END" {
-			readUntilPrompt(reader)
-			return
-		}
-
-		fmt.Println(line)
 	}
 }

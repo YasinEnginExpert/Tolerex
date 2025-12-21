@@ -31,16 +31,23 @@ package main
 import (
 	"net"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"tolerex/internal/logger"
 	"tolerex/internal/middleware"
+	"tolerex/internal/security"
 	"tolerex/internal/server"
 	proto "tolerex/proto/gen"
-	"tolerex/internal/security"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
+)
+
+const (
+	grpcPort    = ":5555"
+	tcpPort     = ":6666"
+	metricsPort = ":9090"
 )
 
 func main() {
@@ -48,7 +55,6 @@ func main() {
 	// --- gRPC SERVER HANDLE ---
 	// Holds a reference to the gRPC server instance so that
 	// it can be managed or extended later if required.
-	var grpcServer *grpc.Server
 
 	// --- LOGGER INITIALIZATION ---
 	// Initializes the global logging subsystem:
@@ -67,13 +73,12 @@ func main() {
 	//
 	// tcpPort:
 	//   Local-only TCP control interface for interactive commands
-	grpcPort := ":5555"
-	tcpPort := ":6666"
 
 	// --- CONFIGURATION LOADING ---
 	// tolerance.conf defines the replication tolerance factor (N-fault tolerance)
 	// Initial member list is empty; members self-register dynamically.
-	confPath := "D:/Tolerex/config/tolerance.conf"
+	confPath := filepath.Join("config", "tolerance.conf")
+
 	members := []string{}
 
 	// --- LEADER SERVER CONSTRUCTION ---
@@ -124,7 +129,7 @@ func main() {
 		// - Request ID propagation
 		// - Structured logging
 		// - Prometheus metrics instrumentation
-		grpcServer = grpc.NewServer(
+		grpcServer := grpc.NewServer(
 			grpc.Creds(creds),
 			grpc.ChainUnaryInterceptor(
 				middleware.RecoveryInterceptor("leader"),
@@ -148,7 +153,7 @@ func main() {
 	// --- TCP COMMAND INTERFACE (CONTROL PLANE) ---
 	// Localhost-only TCP server that:
 	// - Accepts operator commands
-	// - Supports SET / GET / PWD / DIR
+	// - Supports SET / GET commands
 	// - Is intentionally isolated from the network
 	go func() {
 		listener, err := net.Listen("tcp", "127.0.0.1"+tcpPort)
@@ -177,7 +182,7 @@ func main() {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
 
-		if err := http.ListenAndServe(":9090", mux); err != nil {
+		if err := http.ListenAndServe(metricsPort, mux); err != nil {
 			logger.Warn(log, "Metrics server stopped: %v", err)
 		}
 	}()
@@ -188,7 +193,7 @@ func main() {
 	// - Liveness state
 	// - Last heartbeat timestamp
 	// - Stored message counts
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {

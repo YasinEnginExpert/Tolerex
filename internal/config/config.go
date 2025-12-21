@@ -40,25 +40,33 @@ import (
 // Reads and parses the replication tolerance value from the given file path.
 // Returns an error if the file format is invalid or the value is not an integer.
 func ReadTolerance(path string) (int, error) {
-
-	// --- FILE READ ---
-	// Reads the entire configuration file into memory.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
 	}
 
-	// --- LINE NORMALIZATION ---
-	// Trims whitespace and newline characters.
 	line := strings.TrimSpace(string(data))
 
-	// --- KEY=VALUE PARSING ---
-	parts := strings.Split(line, "=")
-	if len(parts) != 2 || strings.ToUpper(parts[0]) != "TOLERANCE" {
-		return 0, fmt.Errorf("invalid tolerance.conf format")
+	parts := strings.SplitN(line, "=", 2)
+	if len(parts) != 2 {
+		return 0, fmt.Errorf("invalid tolerance.conf format, expected TOLERANCE=<positive integer>")
 	}
 
-	// --- INTEGER CONVERSION ---
-	// Converts the tolerance value to integer.
-	return strconv.Atoi(parts[1])
+	key := strings.TrimSpace(parts[0])
+	val := strings.TrimSpace(parts[1])
+
+	if key != "TOLERANCE" {
+		return 0, fmt.Errorf("invalid tolerance.conf format, expected TOLERANCE=<positive integer>")
+	}
+
+	tol, err := strconv.Atoi(val)
+	if err != nil {
+		return 0, fmt.Errorf("tolerance must be a valid integer")
+	}
+
+	if tol <= 0 {
+		return 0, fmt.Errorf("tolerance must be greater than 0")
+	}
+
+	return tol, nil
 }

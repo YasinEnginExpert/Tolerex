@@ -47,7 +47,7 @@ func RequestIDInterceptor() grpc.UnaryServerInterceptor {
 
 		// --- REQUEST ID GENERATION ---
 		// A new UUID is generated for every incoming gRPC request.
-		reqID := uuid.New().String()
+		reqID := uuid.NewString()
 
 		// --- CONTEXT ENRICHMENT ---
 		// The Request ID is injected into the context so that

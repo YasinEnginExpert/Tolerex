@@ -33,6 +33,7 @@
 package storage
 
 import (
+	"bufio"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -48,26 +49,40 @@ import (
 //
 // Returns:
 // - error if directory creation or file write fails
-func WriteMessage(baseDir string, id int, text string) error {
+// --- WRITE MESSAGE (DISPATCHER) ---
+func WriteMessage(baseDir string, id int, text string, mode string) error {
 
-	// --- DIRECTORY ENSURE ---
-	// Ensures that the messages directory exists:
-	//   <baseDir>/messages/
+	// Ensure messages directory exists
 	dir := filepath.Join(baseDir, "messages")
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return err
 	}
 
-	// --- FILE PATH CONSTRUCTION ---
-	// Constructs the full path for the message file:
-	//   <baseDir>/messages/<id>.msg
-	filename := filepath.Join(
-		dir,
-		strconv.Itoa(id)+".msg",
-	)
+	switch mode {
+	case "unbuffered":
+		return writeUnbuffered(dir, id, text)
+	default:
+		return writeBuffered(dir, id, text)
+	}
+}
 
-	// --- FILE WRITE ---
-	// Writes the message content to disk.
-	// Existing files with the same ID will be overwritten.
+func writeBuffered(dir string, id int, text string) error {
+	filename := filepath.Join(dir, strconv.Itoa(id)+".msg")
+
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := bufio.NewWriter(f)
+	if _, err := w.WriteString(text); err != nil {
+		return err
+	}
+	return w.Flush()
+}
+
+func writeUnbuffered(dir string, id int, text string) error {
+	filename := filepath.Join(dir, strconv.Itoa(id)+".msg")
 	return os.WriteFile(filename, []byte(text), 0644)
 }

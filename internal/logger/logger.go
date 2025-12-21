@@ -31,6 +31,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -87,25 +88,22 @@ func SetLevel(level Level) {
 // - Max age      : 14 days
 // - Compression  : enabled (.gz)
 func Init() {
+
+	// logs/ dizini yoksa oluştur
+	_ = os.MkdirAll("logs", 0755)
+
 	writer := &lumberjack.Logger{
-		Filename:   "logs/tolerex.log",
-		MaxSize:    10,    // Rotate after 10 MB
-		MaxBackups: 5,     // Keep at most 5 old log files
-		MaxAge:     14,    // Remove logs older than 14 days
-		Compress:   true, // Compress rotated logs
+		Filename:   filepath.Join("logs", "tolerex.log"),
+		MaxSize:    5, // MB
+		MaxBackups: 7, // max eski dosya
+		MaxAge:     7, // gün
+		Compress:   true,
 	}
 
-	Leader = log.New(
-		writer,
-		"[LEADER] ",
-		log.Ldate|log.Ltime|log.Lmicroseconds|log.Lshortfile,
-	)
+	flags := log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile
 
-	Member = log.New(
-		writer,
-		"[MEMBER] ",
-		log.Ldate|log.Ltime|log.Lmicroseconds|log.Lshortfile,
-	)
+	Leader = log.New(writer, "[LEADER] ", flags)
+	Member = log.New(writer, "[MEMBER] ", flags)
 }
 
 // --- CONTEXT-AWARE LOGGER ---
@@ -124,7 +122,6 @@ func WithContext(ctx context.Context, base *log.Logger) *log.Logger {
 			base.Flags(),
 		)
 	}
-
 	return base
 }
 
