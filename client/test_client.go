@@ -2,12 +2,12 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,41 +25,8 @@ const (
 // ================= FLAGS =================
 
 var (
-	addr  = flag.String("addr", DEFAULT_ADDR, "Leader TCP address (e.g., localhost:6666)")
-	count = flag.Int("count", 0, "Bulk SET count (0 = normal interactive)")
+	addr = flag.String("addr", DEFAULT_ADDR, "Leader TCP address (e.g., localhost:6666)")
 )
-
-// ================= METRICS =================
-
-type ClientResult struct {
-	Mode      string `json:"io_mode"`
-	NodeCount int    `json:"node_count"`
-	Messages  int    `json:"messages"`
-	TotalMs   int64  `json:"total_ms"`
-	AvgUs     int64  `json:"avg_us"`
-}
-
-type ClusterRuntime struct {
-	IOMode    string `json:"io_mode"`
-	NodeCount int    `json:"node_count"`
-}
-
-func readClusterRuntime() ClusterRuntime {
-	var rt ClusterRuntime
-
-	path := "internal/data/cluster_runtime.json"
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return rt
-	}
-
-	_ = json.Unmarshal(data, &rt)
-
-	_ = os.Remove(path)
-
-	return rt
-}
 
 // ================= CONNECTION =================
 
@@ -77,28 +44,9 @@ func connectLoop(address string) net.Conn {
 	}
 }
 
-// ================= RESULT STORAGE =================
-
-func appendResultToFile(r ClientResult) {
-	_ = os.MkdirAll("results", 0755)
-
-	var results []ClientResult
-
-	if data, err := os.ReadFile(RESULT_FILE); err == nil && len(data) > 0 {
-		_ = json.Unmarshal(data, &results)
-	}
-
-	results = append(results, r)
-
-	if b, err := json.MarshalIndent(results, "", "  "); err == nil {
-		_ = os.WriteFile(RESULT_FILE, b, 0644)
-	}
-}
-
 // ================= MAIN =================
 
 func main() {
-	bulkDone := false
 	flag.Parse()
 
 	conn := connectLoop(*addr)
@@ -125,61 +73,48 @@ func main() {
 			continue
 		}
 
-		upper := strings.ToUpper(line)
-
-		// EXIT
-		if upper == "EXIT" || upper == "QUIT" {
+		if strings.EqualFold(line, "EXIT") || strings.EqualFold(line, "QUIT") {
 			_, _ = writer.WriteString("QUIT\r\n")
 			_ = writer.Flush()
 			<-done
 			return
 		}
 
-		// BULK SET MODE (MEASURE + JSON, NO EXTRA TERMINAL OUTPUT)
-		if *count > 0 && !bulkDone && strings.HasPrefix(upper, "SET ") {
-			parts := strings.SplitN(line, " ", 3)
-			if len(parts) < 3 {
-				// Orijinal davranış: kullanıcı uyarısı vardı
-				fmt.Println("Invalid SET format. Use: SET <id> <message>")
-				continue
-			}
+		fields := strings.Fields(line)
+		if len(fields) >= 3 {
+			if bulkCount, err := strconv.Atoi(fields[0]); err == nil {
+				if strings.EqualFold(fields[1], "SET") {
 
-			baseMsg := parts[2]
+					baseMsg := strings.Join(fields[2:], " ")
+					start := time.Now()
 
-			start := time.Now()
+					for i := 1; i <= bulkCount; i++ {
+						cmd := fmt.Sprintf("SET %d %s_%d\r\n", i, baseMsg, i)
+						if _, err := writer.WriteString(cmd); err != nil {
+							return
+						}
 
-			for i := 1; i <= *count; i++ {
-				cmd := fmt.Sprintf("SET %d %s_%d\r\n", i, baseMsg, i)
-				if _, err := writer.WriteString(cmd); err != nil {
-					return
-				}
-
-				if i%BULK_FLUSH_EVERY == 0 {
-					if err := writer.Flush(); err != nil {
-						return
+						if i%BULK_FLUSH_EVERY == 0 {
+							if err := writer.Flush(); err != nil {
+								return
+							}
+						}
 					}
+
+					_ = writer.Flush()
+
+					total := time.Since(start)
+					avg := total / time.Duration(bulkCount)
+
+					fmt.Printf(
+						"BULK DONE: %d SET in %d ms (avg %d us)\n",
+						bulkCount,
+						total.Milliseconds(),
+						avg.Microseconds(),
+					)
+					continue
 				}
 			}
-
-			if err := writer.Flush(); err != nil {
-				return
-			}
-
-			total := time.Since(start)
-			avg := total / time.Duration(*count)
-
-			rt := readClusterRuntime()
-
-			appendResultToFile(ClientResult{
-				Mode:      rt.IOMode,
-				NodeCount: rt.NodeCount,
-				Messages:  *count,
-				TotalMs:   total.Milliseconds(),
-				AvgUs:     avg.Microseconds(),
-			})
-			
-
-			continue
 		}
 
 		// NORMAL COMMAND

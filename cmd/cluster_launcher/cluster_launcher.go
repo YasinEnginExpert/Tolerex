@@ -2,18 +2,12 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 )
-
-type ClusterRuntime struct {
-	IOMode    string `json:"io_mode"`
-	NodeCount int    `json:"node_count"`
-}
 
 // -------------------------
 // INPUT HELPERS
@@ -88,7 +82,6 @@ func main() {
 	fmt.Println("=== TOLEREX LOCAL CLUSTER LAUNCHER ===")
 
 	memberCount := askInt("Number of MEMBERS: ")
-	msgCount := askInt("Messages to send (client count): ")
 	ioMode := askChoice("IO mode [buffered | unbuffered]: ", "buffered", "unbuffered")
 
 	const (
@@ -99,18 +92,8 @@ func main() {
 	fmt.Println("\n--- Configuration ---")
 	fmt.Println("Client count  : 1")
 	fmt.Println("Member count  :", memberCount)
-	fmt.Println("Messages      :", msgCount)
 	fmt.Println("IO Mode       :", ioMode)
-	fmt.Println("---------------------\n")
-
-	runtime := ClusterRuntime{
-		IOMode:    ioMode,
-		NodeCount: memberCount,
-	}
-
-	_ = os.MkdirAll("internal/data", 0755)
-	b, _ := json.MarshalIndent(runtime, "", "  ")
-	_ = os.WriteFile("internal/data/cluster_runtime.json", b, 0644)
+	fmt.Println("---------------------")
 
 	// -------------------------
 	// START LEADER
@@ -147,8 +130,8 @@ func main() {
 	spawnTerminal(
 		"CLIENT",
 		fmt.Sprintf(
-			"cd %s; go run ./client/test_client.go -count %d",
-			baseDir, msgCount,
+			"cd %s; go run ./client/test_client.go",
+			baseDir,
 		),
 	)
 

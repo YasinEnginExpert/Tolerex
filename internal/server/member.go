@@ -43,12 +43,6 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
-const (
-	storeBegin = "[STORE-BEGIN]"
-	storeOK    = "[STORE-OK]"
-	storeFail  = "[STORE-FAIL]"
-)
-
 // ===================================================================================
 // CALLER IDENTITY EXTRACTION
 // ===================================================================================
@@ -108,7 +102,7 @@ func (s *MemberServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 
 	logger.Info(
 		log,
-		storeBegin+"caller=%s msg_id=%d io=%s",
+		"store begin caller=%s msg_id=%d io=%s",
 		caller,
 		msg.Id,
 		s.IOMode,
@@ -119,7 +113,7 @@ func (s *MemberServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 	if err != nil {
 		logger.Error(
 			log,
-			storeFail+"caller=%s msg_id=%d io=%s err=%v duration=%s",
+			"store failed caller=%s msg_id=%d io=%s err=%v duration=%s",
 			caller,
 			msg.Id,
 			s.IOMode,
@@ -131,7 +125,7 @@ func (s *MemberServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 
 	logger.Info(
 		log,
-		storeOK+"caller=%s msg_id=%d io=%s duration=%s",
+		"store ok caller=%s msg_id=%d io=%s duration=%s",
 		caller,
 		msg.Id,
 		s.IOMode,
@@ -161,7 +155,7 @@ func (s *MemberServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 
 	logger.Info(
 		log,
-		"[RETRIEVE-BEGIN] caller=%s msg_id=%d",
+		"retrieve begin caller=%s msg_id=%d",
 		caller,
 		req.Id,
 	)
@@ -169,12 +163,11 @@ func (s *MemberServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 	// --- DISK READ ---
 	text, err := storage.ReadMessage(s.DataDir, int(req.Id))
 	if err != nil {
-		logger.Warn(
+		logger.Info(
 			log,
-			"[RETRIEVE-MISS] caller=%s msg_id=%d err=%v duration=%s",
+			"retrieve miss caller=%s msg_id=%d duration=%s",
 			caller,
 			req.Id,
-			err,
 			time.Since(start),
 		)
 		return &pb.StoredMessage{}, nil
@@ -182,7 +175,7 @@ func (s *MemberServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 
 	logger.Info(
 		log,
-		"[RETRIEVE-HIT] caller=%s msg_id=%d duration=%s",
+		"retrieve hit caller=%s msg_id=%d duration=%s",
 		caller,
 		req.Id,
 		time.Since(start),

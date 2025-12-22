@@ -79,6 +79,15 @@ func SetLevel(level Level) {
 	currentLevel = level
 }
 
+func logBaseDir() string {
+	if os.Getenv("TOLEREX_TEST_MODE") == "1" {
+		if d := os.Getenv("TOLEREX_TEST_DIR"); d != "" {
+			return d
+		}
+	}
+	return "logs"
+}
+
 // --- LOGGER INITIALIZATION ---
 // Initializes the logging backend with log rotation.
 //
@@ -88,15 +97,14 @@ func SetLevel(level Level) {
 // - Max age      : 14 days
 // - Compression  : enabled (.gz)
 func Init() {
-
-	// logs/ dizini yoksa oluştur
-	_ = os.MkdirAll("logs", 0755)
+	baseDir := logBaseDir()
+	_ = os.MkdirAll(baseDir, 0755)
 
 	writer := &lumberjack.Logger{
-		Filename:   filepath.Join("logs", "tolerex.log"),
-		MaxSize:    5, // MB
-		MaxBackups: 7, // max eski dosya
-		MaxAge:     7, // gün
+		Filename:   filepath.Join(baseDir, "tolerex.log"),
+		MaxSize:    5,
+		MaxBackups: 7,
+		MaxAge:     7,
 		Compress:   true,
 	}
 

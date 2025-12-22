@@ -59,6 +59,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -119,6 +120,9 @@ type LeaderServer struct {
 	// --- DIAL OPTION FOR LEADER → MEMBER (mTLS) ---
 	memberDialOpt grpc.DialOption
 
+	dialFn      func(addr string) (*grpc.ClientConn, error)
+	replicateFn func(ctx context.Context, addr string, msg *pb.StoredMessage) bool
+
 	// --- Runtime listeners (introspection only) ---
 	TcpListener  net.Listener // TCP CLI (telnet-style console)
 	GrpcListener net.Listener // gRPC service listener
@@ -132,6 +136,15 @@ type LeaderState struct {
 	Members   []string
 	MemberLog map[string]*MemberInfo
 	MsgMap    map[int][]string
+}
+
+func stateFilePath() string {
+	if os.Getenv("TOLEREX_TEST_MODE") == "1" {
+		if d := os.Getenv("TOLEREX_TEST_DIR"); d != "" {
+			return filepath.Join(d, "leader_state.json")
+		}
+	}
+	return "internal/data/leader_state.json"
 }
 
 const (
@@ -180,6 +193,7 @@ func (s *LeaderServer) StartHeartbeatWatcher() {
 		defer ticker.Stop()
 
 		for range ticker.C {
+			logger.Debug(logger.Leader, "Heartbeat watcher tick")
 			s.mu.Lock()
 			now := time.Now()
 
@@ -212,6 +226,7 @@ func (s *LeaderServer) StartHeartbeatWatcher() {
 // Loads tolerance config, initializes registries, prepares mTLS dial option,
 // and attempts to load persisted leader state.
 func NewLeaderServer(members []string, toleranceFile string) (*LeaderServer, error) {
+	logger.Info(logger.Leader, "LeaderServer initialization started")
 	logger.Info(logger.Leader, "Tolerance file path: %s", toleranceFile)
 
 	// --- TOLERANCE LOAD ---
@@ -279,7 +294,10 @@ func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (
 	if m, exists := s.MemberLog[addr]; exists {
 		if !m.Alive {
 			logger.Info(log, "Member recovered: %s", addr)
+		} else {
+			logger.Debug(log, "Member already registered and alive: %s", addr)
 		}
+
 		m.Alive = true
 		m.LastSeen = time.Now()
 		return &pb.RegisterReply{Ok: true}, nil
@@ -309,6 +327,11 @@ func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (
 // --- DIAL MEMBER (mTLS) ---
 // Establishes a bounded-timeout mTLS gRPC connection to a Member.
 func (s *LeaderServer) dialMember(addr string) (*grpc.ClientConn, error) {
+
+	if s.dialFn != nil {
+		return s.dialFn(addr)
+	}
+
 	logger.Debug(logger.Leader, "Dialing member %s with mTLS", addr)
 
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
@@ -365,6 +388,8 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 		return &pb.StoreResult{Ok: false, Err: "Not enough alive members"}, nil
 	}
 
+	logger.Debug(log, "Replication targets selected: %v", selected)
+
 	// --- ATTEMPT REPLICATION ---
 	var successful []string
 
@@ -375,6 +400,19 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 			s.mu.Unlock()
 			_ = s.saveState()
 			return &pb.StoreResult{Ok: true}, nil
+		}
+
+		if s.replicateFn != nil {
+			if s.replicateFn(ctx, addr, msg) {
+				successful = append(successful, addr)
+
+				s.mu.Lock()
+				if s.MemberLog[addr] != nil {
+					s.MemberLog[addr].MessageCnt++
+				}
+				s.mu.Unlock()
+			}
+			continue
 		}
 
 		conn, err := s.dialMember(addr)
@@ -448,6 +486,10 @@ func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 
 	targets := replicas
 	if !ok || len(replicas) == 0 {
+		logger.Warn(log,
+			"Replica map empty for msg_id=%d, falling back to all members",
+			req.Id,
+		)
 		targets = members
 	}
 
@@ -512,18 +554,23 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 
 	// --- BANNER / HELP TEXT ---
 	banner := []string{
-		"--------------------------------------------------",
-		"TOLEREX - Distributed Storage Leader Node",
-		"--------------------------------------------------",
+		"---------------------------------------",
+		"TOLEREX - Leader Node",
+		"---------------------------------------",
 		"",
 		"Commands:",
 		"",
-		"  SET <id> <message>   Store a message",
-		"  GET <id>             Retrieve a message",
-		"  HELP                 Show this help",
-		"  QUIT | EXIT          Close connection",
+		"  SET <id> <message>",
+		"  <N> SET <message>",
+		"  GET <id>",
+		"  HELP",
+		"  QUIT | EXIT",
 		"",
-		"--------------------------------------------------",
+		"Examples:",
+		"  SET 10 HELLO",
+		"  1000 SET HELLO",
+		"",
+		"---------------------------------------",
 	}
 
 	for _, line := range banner {
@@ -535,6 +582,7 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 	// --- COMMAND LOOP ---
 	for reader.Scan() {
 		line := strings.TrimSpace(reader.Text())
+		logger.Debug(log, "TCP command received: %s", line)
 		if line == "" {
 			fmt.Fprint(writer, "tolerex> ")
 			writer.Flush()
@@ -666,14 +714,19 @@ func (s *LeaderServer) saveStateUnsafe() error {
 	}
 
 	// --- ENSURE DIRECTORY + WRITE FILE ---
-	_ = os.MkdirAll("internal/data", 0755)
-	return os.WriteFile("internal/data/leader_state.json", data, 0644)
+	path := stateFilePath()
+	_ = os.MkdirAll(filepath.Dir(path), 0755)
+	err = os.WriteFile(path, data, 0644)
+	if err == nil {
+		logger.Info(logger.Leader, "Leader state persisted successfully")
+	}
+	return err
 }
 
 // --- LOAD STATE ---
 // Best-effort load from disk. Missing file is treated as empty state.
 func (s *LeaderServer) loadState() error {
-	data, err := os.ReadFile("internal/data/leader_state.json")
+	data, err := os.ReadFile(stateFilePath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -698,6 +751,12 @@ func (s *LeaderServer) loadState() error {
 		state.MsgMap = make(map[int][]string)
 	}
 	s.MsgMap = state.MsgMap
+
+	logger.Info(logger.Leader,
+		"Leader state loaded: members=%d msgMap=%d",
+		len(s.Members),
+		len(s.MsgMap),
+	)
 	return nil
 }
 
