@@ -2,26 +2,26 @@
 // TOLEREX – CENTRALIZED LOGGING SUBSYSTEM
 // ===================================================================================
 //
-// This file implements the centralized logging infrastructure for the Tolerex
-// distributed system.
+// This package implements the centralized logging infrastructure used across
+// the Tolerex distributed system.
 //
 // From a systems and observability perspective, this logger:
 //
-// - Provides role-based loggers (Leader / Member)
-// - Supports log level filtering at runtime
-// - Uses structured, prefix-based logging instead of external frameworks
-// - Integrates log rotation via lumberjack to prevent unbounded disk growth
-// - Propagates request-scoped metadata (Request ID) via context
+//   - Provides role-based loggers (Leader / Member)
+//   - Supports runtime log-level filtering
+//   - Uses simple, prefix-based structured logging
+//   - Integrates log rotation via lumberjack to prevent unbounded disk growth
+//   - Propagates request-scoped metadata (Request ID) via context
 //
 // Design principles:
 //
-// - Minimal dependencies (standard log + lumberjack)
-// - Fail-fast behavior on fatal errors
-// - Shared log sink for distributed components
-// - Deterministic, human-readable log format
+//   - Minimal dependencies (standard log + lumberjack only)
+//   - Deterministic, human-readable output
+//   - Explicit control over behavior (no magic, no hidden defaults)
+//   - Fail-fast semantics for unrecoverable errors
 //
-// This package intentionally avoids complex logging frameworks (zap, zerolog)
-// to keep behavior explicit and predictable in a systems programming context.
+// This package intentionally avoids advanced logging frameworks (zap, zerolog)
+// to keep behavior transparent and predictable in a systems-programming context.
 //
 // ===================================================================================
 
@@ -36,24 +36,37 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// --- CONTEXT KEY TYPE ---
-// Strongly-typed context key to avoid collisions.
+// ===================================================================================
+// CONTEXT KEY DEFINITIONS
+// ===================================================================================
+
+// ctxKey is a strongly-typed context key to avoid collisions
+// with keys defined in other packages.
 type ctxKey string
 
-// --- REQUEST ID CONTEXT KEY ---
-// Used to propagate request-scoped identifiers
+// RequestIDKey is used to propagate request-scoped identifiers
 // across goroutines and service boundaries.
 const RequestIDKey ctxKey = "request_id"
 
-// --- ROLE-BASED LOGGER INSTANCES ---
-// Leader  → coordination and control-plane logs
-// Member  → storage and data-plane logs
+// ===================================================================================
+// ROLE-BASED LOGGER INSTANCES
+// ===================================================================================
+//
+// Leader → coordination, control-plane, orchestration logs
+// Member → storage, data-plane, persistence logs
+
 var (
 	Leader *log.Logger
 	Member *log.Logger
 )
 
-// --- LOG LEVEL DEFINITION ---
+// ===================================================================================
+// LOG LEVEL DEFINITIONS
+// ===================================================================================
+//
+// Log levels are ordered by severity.
+// Messages below the current level are suppressed.
+
 type Level int
 
 const (
@@ -64,20 +77,26 @@ const (
 	FATAL
 )
 
-// --- CURRENT LOG LEVEL ---
-// Default log level is INFO.
-// Messages below this level are suppressed.
+// currentLevel defines the global minimum log level.
+// Default is INFO.
 var currentLevel = INFO
 
-// --- LOG LEVEL FILTER ---
+// enabled returns true if the given level should be logged.
 func enabled(level Level) bool {
 	return level >= currentLevel
 }
 
-// --- SET GLOBAL LOG LEVEL ---
+// SetLevel updates the global log verbosity at runtime.
 func SetLevel(level Level) {
 	currentLevel = level
 }
+
+// ===================================================================================
+// LOG DIRECTORY RESOLUTION
+// ===================================================================================
+//
+// In test mode, logs can be redirected to a temporary directory
+// to avoid polluting production logs.
 
 func logBaseDir() string {
 	if os.Getenv("TOLEREX_TEST_MODE") == "1" {
@@ -88,14 +107,20 @@ func logBaseDir() string {
 	return "logs"
 }
 
-// --- LOGGER INITIALIZATION ---
-// Initializes the logging backend with log rotation.
+// ===================================================================================
+// LOGGER INITIALIZATION
+// ===================================================================================
+//
+// Init initializes the shared logging backend with log rotation.
 //
 // Rotation policy:
-// - Max file size: 10 MB
-// - Max backups  : 5 files
-// - Max age      : 14 days
-// - Compression  : enabled (.gz)
+//   - Max file size : 5 MB
+//   - Max backups  : 7 files
+//   - Max age      : 7 days
+//   - Compression  : enabled (.gz)
+//
+// All loggers share the same sink but differ by prefix.
+
 func Init() {
 	baseDir := logBaseDir()
 	_ = os.MkdirAll(baseDir, 0755)
@@ -108,16 +133,23 @@ func Init() {
 		Compress:   true,
 	}
 
+	// Include timestamps and source location for debugging
 	flags := log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile
 
 	Leader = log.New(writer, "[LEADER] ", flags)
 	Member = log.New(writer, "[MEMBER] ", flags)
 }
 
-// --- CONTEXT-AWARE LOGGER ---
-// Returns a derived logger enriched with request-scoped metadata.
-// If a Request ID is present in the context, it is injected
-// into the log prefix.
+// ===================================================================================
+// CONTEXT-AWARE LOGGER
+// ===================================================================================
+//
+// WithContext returns a derived logger enriched with request-scoped metadata.
+// If a Request ID is present in the context, it is injected into the log prefix.
+//
+// Example output:
+//   [LEADER] [REQ:abc123] [INFO] Store request received
+
 func WithContext(ctx context.Context, base *log.Logger) *log.Logger {
 	if ctx == nil {
 		return base
@@ -133,37 +165,40 @@ func WithContext(ctx context.Context, base *log.Logger) *log.Logger {
 	return base
 }
 
-// --- DEBUG LOG ---
+// ===================================================================================
+// LOGGING HELPERS (LEVEL-AWARE)
+// ===================================================================================
+
+// Debug logs diagnostic information useful during development.
 func Debug(log *log.Logger, format string, v ...any) {
 	if enabled(DEBUG) {
 		log.Printf("[DEBUG] "+format, v...)
 	}
 }
 
-// --- INFO LOG ---
+// Info logs normal operational events.
 func Info(log *log.Logger, format string, v ...any) {
 	if enabled(INFO) {
 		log.Printf("[INFO] "+format, v...)
 	}
 }
 
-// --- WARNING LOG ---
+// Warn logs abnormal but recoverable conditions.
 func Warn(log *log.Logger, format string, v ...any) {
 	if enabled(WARN) {
 		log.Printf("[WARN] "+format, v...)
 	}
 }
 
-// --- ERROR LOG ---
+// Error logs failures that do not immediately terminate the process.
 func Error(log *log.Logger, format string, v ...any) {
 	if enabled(ERROR) {
 		log.Printf("[ERROR] "+format, v...)
 	}
 }
 
-// --- FATAL LOG ---
-// Logs the message and immediately terminates the process.
-// Used for unrecoverable system-level failures.
+// Fatal logs an unrecoverable error and immediately terminates the process.
+// This should only be used for system-level failures.
 func Fatal(log *log.Logger, format string, v ...any) {
 	log.Printf("[FATAL] "+format, v...)
 	os.Exit(1)

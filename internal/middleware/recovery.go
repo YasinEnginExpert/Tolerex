@@ -7,15 +7,15 @@
 //
 // From a systems reliability and fault-tolerance perspective, this interceptor:
 //
-// - Prevents process-wide crashes caused by panics
-// - Contains failures at the request boundary
-// - Logs detailed panic diagnostics including stack traces
-// - Converts unrecoverable panics into well-defined gRPC errors
-// - Preserves service availability under unexpected runtime failures
+//   - Prevents process-wide crashes caused by unexpected panics
+//   - Contains failures strictly at the request boundary
+//   - Logs detailed panic diagnostics, including stack traces
+//   - Translates unrecoverable panics into standardized gRPC errors
+//   - Preserves overall service availability under runtime failures
 //
-// This interceptor represents the last-resort safety net in the gRPC
-// interceptor chain and must be placed as the outermost interceptor
-// to ensure complete coverage.
+// This interceptor represents the **last-resort safety net** in the gRPC
+// interceptor chain and MUST be placed as the outermost interceptor
+// (i.e., first in the chain) to ensure complete coverage.
 //
 // ===================================================================================
 
@@ -32,13 +32,26 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// --- RECOVERY INTERCEPTOR ---
-// Creates a gRPC UnaryServerInterceptor that:
+// ===================================================================================
+// PANIC RECOVERY INTERCEPTOR
+// ===================================================================================
 //
-// - Wraps request execution in a deferred recover block
-// - Captures panics raised by downstream handlers or interceptors
-// - Logs panic details with stack trace
-// - Translates the panic into a gRPC INTERNAL error
+// RecoveryInterceptor returns a gRPC UnaryServerInterceptor that:
+//
+//   - Wraps request execution in a deferred recover() block
+//   - Captures panics raised by downstream handlers or interceptors
+//   - Logs panic details with full stack trace
+//   - Converts the panic into a gRPC INTERNAL error
+//
+// The interceptor does NOT attempt to resume execution.
+// Instead, it fails the request safely while keeping the process alive.
+//
+// Parameter:
+//
+//   baseLoggerName:
+//     Identifies the node role ("leader" or "member") so that panic logs
+//     are attributed to the correct component.
+
 func RecoveryInterceptor(baseLoggerName string) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
@@ -47,26 +60,52 @@ func RecoveryInterceptor(baseLoggerName string) grpc.UnaryServerInterceptor {
 		handler grpc.UnaryHandler,
 	) (resp interface{}, err error) {
 
-		// --- PANIC RECOVERY DEFER ---
-		// Ensures that any panic during request handling
-		// is recovered and does not crash the entire process.
+		// -----------------------------------------------------------------------
+		// PANIC RECOVERY DEFER
+		// -----------------------------------------------------------------------
+		//
+		// The deferred function ensures that any panic occurring during
+		// request processing is recovered and handled gracefully.
+		//
+		// Without this interceptor, a single panic could terminate the
+		// entire gRPC server process.
+
 		defer func() {
 			if r := recover(); r != nil {
 
-				// --- BASE LOGGER SELECTION ---
-				// Chooses the appropriate logger based on node role.
+				// ---------------------------------------------------------------
+				// BASE LOGGER SELECTION
+				// ---------------------------------------------------------------
+				//
+				// Select the appropriate role-based logger so that
+				// panic diagnostics are clearly attributed.
+
 				var base = logger.Leader
 				if baseLoggerName == "member" {
 					base = logger.Member
 				}
 
-				// --- CONTEXT-AWARE LOGGER ---
-				// Enriches log output with request-scoped metadata.
+				// ---------------------------------------------------------------
+				// CONTEXT-AWARE LOGGER
+				// ---------------------------------------------------------------
+				//
+				// Enrich panic logs with request-scoped metadata
+				// such as Request ID (if present in context).
+
 				log := logger.WithContext(ctx, base)
 
-				// --- PANIC LOGGING ---
-				// Logs panic value, gRPC method, and full stack trace
-				// for post-mortem analysis.
+				// ---------------------------------------------------------------
+				// PANIC DIAGNOSTIC LOGGING
+				// ---------------------------------------------------------------
+				//
+				// Log:
+				//   - Panic value
+				//   - gRPC method name
+				//   - Full stack trace
+				//
+				// Stack traces are critical for post-mortem analysis
+				// and root-cause investigation.
+
 				log.Printf(
 					"PANIC recovered: %v | method=%s\n%s",
 					r,
@@ -74,15 +113,25 @@ func RecoveryInterceptor(baseLoggerName string) grpc.UnaryServerInterceptor {
 					string(debug.Stack()),
 				)
 
-				// --- ERROR TRANSLATION ---
-				// Converts the panic into a standardized gRPC error
-				// to prevent leaking internal details to the client.
+				// ---------------------------------------------------------------
+				// ERROR TRANSLATION
+				// ---------------------------------------------------------------
+				//
+				// Convert the panic into a standardized gRPC INTERNAL error.
+				// This prevents leaking internal implementation details
+				// to the client while clearly signaling a server-side failure.
+
 				err = status.Errorf(codes.Internal, "internal server error")
 			}
 		}()
 
-		// --- DELEGATE TO NEXT HANDLER ---
-		// Executes the next interceptor or the actual gRPC method.
+		// -----------------------------------------------------------------------
+		// DELEGATION
+		// -----------------------------------------------------------------------
+		//
+		// Execute the next interceptor in the chain or the actual
+		// gRPC method implementation.
+
 		return handler(ctx, req)
 	}
 }

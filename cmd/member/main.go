@@ -20,15 +20,58 @@ import (
 	"google.golang.org/grpc"
 )
 
+// ===================================================================================
+// TOLEREX – MEMBER NODE BOOTSTRAP
+// ===================================================================================
+//
+// This file is the **infrastructure entry point** for a Member node in the
+// Tolerex distributed, fault-tolerant storage system.
+//
+// From an architectural perspective, a Member node:
+//
+//   - Acts as a stateful storage replica
+//   - Accepts Store / Retrieve RPCs exclusively from the Leader
+//   - Persists data locally to disk
+//   - Does NOT perform coordination, replication strategy, or consensus
+//
+// This file intentionally contains **no business logic**.
+// Its sole responsibility is wiring together runtime components:
+//
+//   - Logging initialization
+//   - Command-line configuration
+//   - Secure gRPC server bootstrap (mTLS)
+//   - Leader registration
+//   - Periodic heartbeat emission
+//   - Graceful shutdown handling
+//
+// This file serves as the **composition root** of the Member process.
+//
+// ===================================================================================
+
 func main() {
-	// --- LOGGER INITIALIZATION ---
+
+	// -------------------------------------------------------------------------------
+	// LOGGING INITIALIZATION
+	// -------------------------------------------------------------------------------
+	//
+	// Initializes the global logging subsystem for the Member process.
+	// Logging includes structured output, rotation, and runtime-adjustable levels.
+
 	logger.Init()
 	logger.SetLevel(logger.INFO)
 
 	memberLog := logger.Member
-	logger.Info(memberLog, "Member server starting...")
+	logger.Info(memberLog, "Member server starting")
 
-	// --- FLAGS ---
+	// -------------------------------------------------------------------------------
+	// COMMAND-LINE FLAGS
+	// -------------------------------------------------------------------------------
+	//
+	// Each Member instance is configured via CLI flags:
+	//
+	//   - port : gRPC listening port (unique per Member)
+	//   - io   : disk I/O mode (buffered | unbuffered)
+
 	port := flag.String("port", "5556", "gRPC port")
 	ioMode := flag.String("io", "buffered", "disk IO mode: buffered | unbuffered")
 	flag.Parse()
@@ -36,47 +79,102 @@ func main() {
 	leaderAddr := "localhost:5555"
 	myAddr := "localhost:" + *port
 
-	// --- DATA DIR ---
+	// -------------------------------------------------------------------------------
+	// DATA DIRECTORY INITIALIZATION
+	// -------------------------------------------------------------------------------
+	//
+	// Each Member maintains an isolated data directory based on its port.
+	// This ensures:
+	//   - No cross-member disk interference
+	//   - Deterministic storage layout
+	//   - Easy debugging and cleanup
+
 	dataDir := filepath.Join("internal", "data", "member-"+*port)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		logger.Fatal(memberLog, "Data directory could not be created: %v", err)
 	}
 
-	cleanup := func() { _ = os.RemoveAll(dataDir) }
-	defer cleanup()
+	// -------------------------------------------------------------------------------
+	// GRACEFUL SHUTDOWN HANDLING
+	// -------------------------------------------------------------------------------
+	//
+	// Listens for OS termination signals (SIGINT, SIGTERM).
+	// On shutdown:
+	//   - Logs the event
+	//   - Allows controlled process termination
+	//
+	// Note:
+	// This is intentionally minimal. Any cleanup policy (ephemeral storage, etc.)
+	// is handled explicitly by design decisions elsewhere.
 
-	// --- GRACEFUL SHUTDOWN ---
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		<-sig
-		logger.Warn(memberLog, "Shutdown signal received, cleaning up")
-		cleanup()
+		logger.Warn(memberLog, "Shutdown signal received, terminating member process")
 		os.Exit(0)
 	}()
 
-	// --- START MEMBER gRPC SERVER ---
+	// -------------------------------------------------------------------------------
+	// START MEMBER gRPC SERVER
+	// -------------------------------------------------------------------------------
+	//
+	// The gRPC server:
+	//   - Accepts Store / Retrieve RPCs
+	//   - Is secured with mutual TLS (mTLS)
+	//   - Is instrumented with logging, recovery, request IDs, and metrics
+	//
+	// It is launched in a separate goroutine so that registration and heartbeat
+	// logic can proceed concurrently.
+
 	go startMemberGRPC(memberLog, *port, dataDir, *ioMode)
 
-	// --- REGISTER TO LEADER ---
+	// -------------------------------------------------------------------------------
+	// LEADER REGISTRATION
+	// -------------------------------------------------------------------------------
+	//
+	// After startup, the Member explicitly registers itself with the Leader.
+	// A short delay ensures the gRPC server is fully listening before registration.
+
 	time.Sleep(500 * time.Millisecond)
 	registerToLeader(memberLog, leaderAddr, myAddr)
 
-	// --- HEARTBEAT LOOP ---
+	// -------------------------------------------------------------------------------
+	// HEARTBEAT LOOP
+	// -------------------------------------------------------------------------------
+	//
+	// Starts a background heartbeat routine that:
+	//   - Periodically contacts the Leader
+	//   - Updates liveness state
+	//   - Allows the Leader to detect failures via timeout
+
 	startHeartbeat(memberLog, leaderAddr, myAddr)
 
-	// keep process alive
+	// -------------------------------------------------------------------------------
+	// BLOCK FOREVER
+	// -------------------------------------------------------------------------------
+	//
+	// The Member process is designed to run indefinitely until terminated.
+
 	select {}
 }
 
+// ===================================================================================
+// MEMBER gRPC SERVER BOOTSTRAP
+// ===================================================================================
+
 func startMemberGRPC(memberLog *log.Logger, port, dataDir, ioMode string) {
+
+	// Bind TCP listener
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		logger.Fatal(memberLog, "Failed to listen on port %s: %v", port, err)
 	}
+
 	logger.Info(memberLog, "Starting gRPC server on port %s", port)
 
+	// Load mTLS server credentials
 	creds, err := security.NewMTLSServerCreds(
 		"config/tls/member.crt",
 		"config/tls/member.key",
@@ -86,6 +184,7 @@ func startMemberGRPC(memberLog *log.Logger, port, dataDir, ioMode string) {
 		logger.Fatal(memberLog, "Failed to load mTLS credentials: %v", err)
 	}
 
+	// Construct gRPC server with middleware chain
 	grpcServer := grpc.NewServer(
 		grpc.Creds(creds),
 		grpc.ChainUnaryInterceptor(
@@ -96,23 +195,38 @@ func startMemberGRPC(memberLog *log.Logger, port, dataDir, ioMode string) {
 		),
 	)
 
+	// Create MemberServer instance (storage worker)
 	member := &server.MemberServer{
 		DataDir: dataDir,
 		IOMode:  ioMode,
 	}
+
+	// Register gRPC service
 	proto.RegisterStorageServiceServer(grpcServer, member)
 
-	logger.Info(memberLog, "Member running on port %s, dataDir=%s io=%s", port, dataDir, ioMode)
+	logger.Info(
+		memberLog,
+		"Member running on port %s (dataDir=%s, io=%s)",
+		port,
+		dataDir,
+		ioMode,
+	)
 
+	// Start serving requests
 	if err := grpcServer.Serve(listener); err != nil {
-		logger.Fatal(memberLog, "gRPC server failed: %v", err)
+		logger.Fatal(memberLog, "gRPC server terminated: %v", err)
 	}
 }
 
-// --- LEADER REGISTRATION ROUTINE ---
+// ===================================================================================
+// LEADER REGISTRATION ROUTINE
+// ===================================================================================
+
 func registerToLeader(memberLog *log.Logger, leaderAddr, myAddr string) {
+
 	logger.Info(memberLog, "Registering to leader at %s as %s", leaderAddr, myAddr)
 
+	// Load mTLS client credentials
 	creds, err := security.NewMTLSClientCreds(
 		"config/tls/member.crt",
 		"config/tls/member.key",
@@ -123,6 +237,7 @@ func registerToLeader(memberLog *log.Logger, leaderAddr, myAddr string) {
 		logger.Fatal(memberLog, "mTLS client credentials error: %v", err)
 	}
 
+	// Connect to Leader
 	conn, err := grpc.Dial(leaderAddr, grpc.WithTransportCredentials(creds))
 	if err != nil {
 		logger.Fatal(memberLog, "Failed to connect to leader: %v", err)
@@ -131,6 +246,7 @@ func registerToLeader(memberLog *log.Logger, leaderAddr, myAddr string) {
 
 	client := proto.NewStorageServiceClient(conn)
 
+	// Perform registration with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -142,10 +258,15 @@ func registerToLeader(memberLog *log.Logger, leaderAddr, myAddr string) {
 	logger.Info(memberLog, "Successfully registered to leader: %s", myAddr)
 }
 
-// --- HEARTBEAT LOOP ---
+// ===================================================================================
+// HEARTBEAT LOOP
+// ===================================================================================
+
 func startHeartbeat(memberLog *log.Logger, leaderAddr, myAddr string) {
+
 	logger.Info(memberLog, "Heartbeat loop started (interval=5s, leader=%s)", leaderAddr)
 
+	// Prepare mTLS client credentials once
 	creds, err := security.NewMTLSClientCreds(
 		"config/tls/member.crt",
 		"config/tls/member.key",
@@ -183,5 +304,7 @@ func startHeartbeat(memberLog *log.Logger, leaderAddr, myAddr string) {
 
 /*
 USAGE EXAMPLE:
+
   go run cmd/member/main.go -port=5556 -io=buffered
+
 */

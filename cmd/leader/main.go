@@ -2,27 +2,31 @@
 // TOLEREX – LEADER NODE BOOTSTRAP
 // ===================================================================================
 //
-// This file represents the infrastructure-level bootstrapper of the Leader node
-// in the Tolerex distributed, fault-tolerant storage system.
+// This file is the **infrastructure bootstrap** of the Leader process in the
+// Tolerex distributed, fault-tolerant storage system.
 //
-// From a systems perspective, this file is responsible for orchestrating the
-// lifecycle of all runtime components but deliberately avoids implementing
-// any business or domain logic.
+// The Leader node is the *single coordination authority* in the cluster.
+// This entry point is intentionally free of business logic and focuses purely on
+// wiring together runtime components.
 //
-// Architecturally, this entry point:
+// Responsibilities of this file:
 //
-// - Initializes the global logging subsystem with rotation and severity control
-// - Loads system-level configuration such as replication tolerance
-// - Constructs the LeaderServer instance (core coordination authority)
-// - Boots a secure gRPC server protected with mutual TLS (mTLS)
-// - Exposes a localhost-only TCP control plane for operator commands
-// - Publishes Prometheus-compatible metrics for observability
-// - Launches background goroutines for heartbeat supervision
-// - Periodically renders real-time cluster state for operational insight
+//   - Initialize global logging (rotation, levels, formatting)
+//   - Load system-level configuration (replication tolerance)
+//   - Construct the LeaderServer (cluster coordination core)
+//   - Start a secure gRPC server protected by mutual TLS (mTLS)
+//   - Expose a localhost-only TCP control interface for operators
+//   - Publish Prometheus-compatible metrics for observability
+//   - Launch background goroutines for heartbeat supervision
+//   - Periodically render live cluster state for operational insight
 //
 // This file acts as the **composition root** of the Leader process.
-// All domain behavior is delegated to internal packages (server, middleware,
-// security, logger), enforcing clean separation of concerns.
+// All domain behavior is delegated to internal packages:
+//
+//   - server     → cluster coordination & state
+//   - security   → TLS / mTLS primitives
+//   - middleware → cross-cutting gRPC concerns
+//   - logger     → structured logging & lifecycle tracing
 //
 // ===================================================================================
 
@@ -44,75 +48,104 @@ import (
 	"google.golang.org/grpc"
 )
 
+// ===================================================================================
+// NETWORK CONFIGURATION
+// ===================================================================================
+//
+// Ports are intentionally fixed for local development clarity.
+// In production, these would typically be configurable via environment variables
+// or a configuration system.
+
 const (
-	grpcPort    = ":5555"
-	tcpPort     = ":6666"
-	metricsPort = ":9090"
+	grpcPort    = ":5555" // Secure Leader ↔ Member gRPC endpoint (mTLS)
+	tcpPort     = ":6666" // Local-only TCP control plane (operator interface)
+	metricsPort = ":9090" // Prometheus metrics endpoint
 )
+
+// ===================================================================================
+// MAIN
+// ===================================================================================
 
 func main() {
 
-	// --- gRPC SERVER HANDLE ---
-	// Holds a reference to the gRPC server instance so that
-	// it can be managed or extended later if required.
-
-	// --- LOGGER INITIALIZATION ---
+	// -------------------------------------------------------------------------------
+	// LOGGING INITIALIZATION
+	// -------------------------------------------------------------------------------
+	//
 	// Initializes the global logging subsystem:
-	// - Log rotation (lumberjack)
-	// - Leader-specific logger instance
-	// - Runtime-adjustable log level
+	//   - Log rotation via lumberjack
+	//   - Structured logging format
+	//   - Runtime-adjustable log levels
+	//
+	// The Leader logger is used throughout this process lifecycle.
+
 	logger.Init()
 	logger.SetLevel(logger.INFO)
 
 	log := logger.Leader
-	logger.Info(log, "Leader server starting...")
+	logger.Info(log, "Leader process starting")
 
-	// --- NETWORK PORT CONFIGURATION ---
-	// grpcPort:
-	//   Secure gRPC endpoint for Leader ↔ Member communication (mTLS)
+	// -------------------------------------------------------------------------------
+	// CONFIGURATION LOADING
+	// -------------------------------------------------------------------------------
 	//
-	// tcpPort:
-	//   Local-only TCP control interface for interactive commands
+	// tolerance.conf defines the replication tolerance factor (N-fault tolerance).
+	// The initial member list is intentionally empty; members self-register dynamically.
 
-	// --- CONFIGURATION LOADING ---
-	// tolerance.conf defines the replication tolerance factor (N-fault tolerance)
-	// Initial member list is empty; members self-register dynamically.
 	confPath := filepath.Join("config", "tolerance.conf")
+	initialMembers := []string{}
 
-	members := []string{}
+	// -------------------------------------------------------------------------------
+	// LEADER SERVER CONSTRUCTION
+	// -------------------------------------------------------------------------------
+	//
+	// The LeaderServer is the core coordination component responsible for:
+	//   - Member registration & liveness tracking
+	//   - Replica placement decisions
+	//   - Store / Retrieve orchestration
+	//   - Cluster metadata persistence
 
-	// --- LEADER SERVER CONSTRUCTION ---
-	// Creates the LeaderServer instance which:
-	// - Loads replication tolerance
-	// - Initializes in-memory cluster state
-	// - Prepares secure client credentials for member communication
-	leader, err := server.NewLeaderServer(members, confPath)
+	leader, err := server.NewLeaderServer(initialMembers, confPath)
 	if err != nil {
 		logger.Fatal(log, "Leader initialization failed: %v", err)
 	}
 
-	// --- HEARTBEAT SUPERVISOR ---
+	// -------------------------------------------------------------------------------
+	// HEARTBEAT SUPERVISION
+	// -------------------------------------------------------------------------------
+	//
 	// Starts a background watcher that:
-	// - Tracks periodic heartbeats from members
-	// - Detects failures via timeout
-	// - Marks unreachable members as inactive
+	//   - Monitors periodic heartbeats from members
+	//   - Detects failures via timeout
+	//   - Marks unreachable members as DOWN
+	//
+	// This runs independently of the gRPC server.
+
 	leader.StartHeartbeatWatcher()
 
-	// --- gRPC SERVER (mTLS-PROTECTED DATA PLANE) ---
-	// Responsible for:
-	// - Member registration
-	// - Heartbeat processing
-	// - Distributed Store / Retrieve RPCs
+	// -------------------------------------------------------------------------------
+	// gRPC SERVER (DATA PLANE – mTLS PROTECTED)
+	// -------------------------------------------------------------------------------
+	//
+	// This server handles all cluster-level RPCs:
+	//   - RegisterMember
+	//   - Heartbeat
+	//   - Store / Retrieve
+	//
+	// It is secured using mutual TLS (mTLS) and instrumented with
+	// logging, recovery, request IDs, and metrics.
+
 	go func() {
 		lis, err := net.Listen("tcp", grpcPort)
 		if err != nil {
 			logger.Fatal(log, "Failed to listen on gRPC port %s: %v", grpcPort, err)
 		}
 
-		// --- mTLS CREDENTIAL LOADING ---
-		// Loads:
-		// - Leader certificate & private key
-		// - Trusted CA certificate
+		// Load mTLS server credentials:
+		//   - Leader certificate
+		//   - Leader private key
+		//   - Trusted CA certificate
+
 		creds, err := security.NewMTLSServerCreds(
 			"config/tls/leader.crt",
 			"config/tls/leader.key",
@@ -122,13 +155,7 @@ func main() {
 			logger.Fatal(log, "Failed to load mTLS credentials: %v", err)
 		}
 
-		// --- gRPC SERVER CREATION ---
-		// Server is configured with:
-		// - Mutual TLS transport security
-		// - Panic recovery interceptor
-		// - Request ID propagation
-		// - Structured logging
-		// - Prometheus metrics instrumentation
+		// Construct gRPC server with cross-cutting middleware.
 		grpcServer := grpc.NewServer(
 			grpc.Creds(creds),
 			grpc.ChainUnaryInterceptor(
@@ -139,22 +166,27 @@ func main() {
 			),
 		)
 
-		// --- SERVICE REGISTRATION ---
-		// Binds LeaderServer implementation to gRPC service definition
+		// Bind LeaderServer implementation to the gRPC service definition.
 		proto.RegisterStorageServiceServer(grpcServer, leader)
 
 		logger.Info(log, "Leader gRPC server listening on %s", grpcPort)
 
 		if err := grpcServer.Serve(lis); err != nil {
-			logger.Fatal(log, "gRPC server error: %v", err)
+			logger.Fatal(log, "gRPC server terminated: %v", err)
 		}
 	}()
 
-	// --- TCP COMMAND INTERFACE (CONTROL PLANE) ---
-	// Localhost-only TCP server that:
-	// - Accepts operator commands
-	// - Supports SET / GET commands
-	// - Is intentionally isolated from the network
+	// -------------------------------------------------------------------------------
+	// TCP CONTROL PLANE (OPERATOR INTERFACE)
+	// -------------------------------------------------------------------------------
+	//
+	// This is a localhost-only TCP interface intended for:
+	//   - Manual inspection
+	//   - Debugging
+	//   - Interactive SET / GET commands
+	//
+	// It is intentionally isolated from external networks.
+
 	go func() {
 		listener, err := net.Listen("tcp", "127.0.0.1"+tcpPort)
 		if err != nil {
@@ -162,23 +194,31 @@ func main() {
 		}
 		defer listener.Close()
 
-		logger.Info(log, "Leader TCP server listening on %s", tcpPort)
+		logger.Info(log, "Leader TCP control plane listening on %s", tcpPort)
 
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				logger.Warn(log, "Incoming TCP connection failed: %v", err)
+				logger.Warn(log, "TCP accept error: %v", err)
 				continue
 			}
+
 			go leader.HandleClient(conn)
 		}
 	}()
 
-	// --- PROMETHEUS METRICS ENDPOINT ---
-	// Exposes runtime and application metrics at:
-	// http://localhost:9090/metrics
+	// -------------------------------------------------------------------------------
+	// PROMETHEUS METRICS ENDPOINT
+	// -------------------------------------------------------------------------------
+	//
+	// Exposes application and runtime metrics at:
+	//   http://localhost:9090/metrics
+	//
+	// This endpoint is intentionally lightweight and read-only.
+
 	go func() {
-		logger.Info(log, "Metrics server listening on :9090")
+		logger.Info(log, "Metrics endpoint listening on %s", metricsPort)
+
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
 
@@ -187,12 +227,18 @@ func main() {
 		}
 	}()
 
-	// --- LIVE CLUSTER STATE DISPLAY ---
-	// Periodically refreshes terminal output with:
-	// - Member addresses
-	// - Liveness state
-	// - Last heartbeat timestamp
-	// - Stored message counts
+	// -------------------------------------------------------------------------------
+	// LIVE CLUSTER STATE RENDERING
+	// -------------------------------------------------------------------------------
+	//
+	// Periodically prints a live view of cluster state to stdout:
+	//   - Member addresses
+	//   - Liveness status
+	//   - Last heartbeat timestamp
+	//   - Stored message counts
+	//
+	// This is intended for local observability and demos.
+
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 

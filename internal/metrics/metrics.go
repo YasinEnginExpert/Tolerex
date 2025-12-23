@@ -2,22 +2,25 @@
 // TOLEREX – PROMETHEUS METRICS SUBSYSTEM
 // ===================================================================================
 //
-// This file defines the core Prometheus metrics used for observing gRPC behavior
-// within the Tolerex distributed system.
+// This package defines the core Prometheus metric collectors used to observe
+// gRPC behavior inside the Tolerex distributed system.
 //
-// From an observability and systems monitoring perspective, this package:
+// From an observability and systems-monitoring perspective, this subsystem:
 //
-// - Exposes high-level gRPC traffic metrics
-// - Enables request-level visibility (volume + latency)
-// - Integrates seamlessly with Prometheus pull-based scraping
-// - Is designed to be used by gRPC middleware/interceptors
+//   - Exposes high-level gRPC traffic metrics
+//   - Provides request-level visibility (volume + latency)
+//   - Integrates naturally with Prometheus’ pull-based scraping model
+//   - Is designed to be consumed by gRPC middleware / interceptors
 //
-// Metrics defined here are process-wide and must be registered exactly once
-// during application startup.
+// Key design constraints:
 //
-// This package does NOT expose an HTTP endpoint by itself.
+//   - Metrics are process-wide and singleton in nature
+//   - Collectors must be registered exactly once at startup
+//   - No business logic is embedded in this package
+//
+// This package DOES NOT expose an HTTP endpoint.
 // It only defines and registers metric collectors.
-// Endpoint exposure is handled by the main application.
+// Endpoint exposure (e.g. /metrics) is handled by the application bootstrap.
 //
 // ===================================================================================
 
@@ -27,45 +30,81 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// ===================================================================================
+// METRIC COLLECTORS
+// ===================================================================================
+
 var (
-	// --- TOTAL gRPC REQUEST COUNTER ---
-	// Counts the total number of gRPC requests processed by the server.
+
+	// -------------------------------------------------------------------------------
+	// TOTAL gRPC REQUEST COUNTER
+	// -------------------------------------------------------------------------------
+	//
+	// GrpcRequestsTotal counts the total number of gRPC requests processed
+	// by the server process.
+	//
+	// This metric provides a high-level view of traffic volume and error rates.
 	//
 	// Labels:
-	// - method : gRPC method name (e.g. StorageService/Store)
-	// - status : request outcome (e.g. OK, ERROR)
+	//   - method : Fully-qualified gRPC method name
+	//              (e.g. StorageService/Store)
+	//   - status : Logical request outcome
+	//              (e.g. OK, ERROR)
+	//
+	// Typical use cases:
+	//   - Traffic volume monitoring
+	//   - Error-rate alerting
+	//   - Capacity planning
+
 	GrpcRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "grpc_requests_total",
-			Help: "Total number of gRPC requests",
+			Help: "Total number of gRPC requests processed",
 		},
 		[]string{"method", "status"},
 	)
 
-	// --- gRPC REQUEST LATENCY HISTOGRAM ---
-	// Measures how long gRPC requests take to complete.
+	// -------------------------------------------------------------------------------
+	// gRPC REQUEST LATENCY HISTOGRAM
+	// -------------------------------------------------------------------------------
+	//
+	// GrpcRequestDuration measures the end-to-end latency of gRPC requests.
 	//
 	// Buckets:
-	// Uses Prometheus default latency buckets suitable
-	// for general RPC performance analysis.
+	//   Uses Prometheus default buckets, which are well-suited for
+	//   general-purpose RPC latency analysis.
 	//
 	// Labels:
-	// - method : gRPC method name
+	//   - method : Fully-qualified gRPC method name
+	//
+	// Typical use cases:
+	//   - Latency SLO/SLA tracking
+	//   - Tail latency analysis (p95 / p99)
+	//   - Performance regression detection
+
 	GrpcRequestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "grpc_request_duration_seconds",
-			Help:    "gRPC request latency",
+			Help:    "Latency of gRPC requests in seconds",
 			Buckets: prometheus.DefBuckets,
 		},
 		[]string{"method"},
 	)
 )
 
-// --- METRICS REGISTRATION ---
-// Registers all metric collectors with the Prometheus
-// default registry.
+// ===================================================================================
+// METRICS REGISTRATION
+// ===================================================================================
 //
-// Must be called exactly once at application startup.
+// Init registers all metric collectors with Prometheus’ default registry.
+//
+// IMPORTANT:
+//   - This function must be called exactly once per process.
+//   - Multiple registrations will cause a panic (MustRegister).
+//
+// Registration is intentionally explicit to ensure
+// predictable startup behavior and fail-fast semantics.
+
 func Init() {
 	prometheus.MustRegister(
 		GrpcRequestsTotal,

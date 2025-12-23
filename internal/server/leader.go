@@ -152,37 +152,6 @@ func (s *LeaderServer) Heartbeat(ctx context.Context, hb *pb.HeartbeatRequest) (
 // cleanupMemberUnsafe removes all replicas belonging to a DOWN member
 // and resets its load counters.
 // MUST be called with s.mu held.
-func (s *LeaderServer) cleanupMemberUnsafe(addr string) {
-	removed := 0
-
-	for msgID, replicas := range s.MsgMap {
-		var kept []string
-		for _, r := range replicas {
-			if r != addr {
-				kept = append(kept, r)
-			} else {
-				removed++
-			}
-		}
-
-		if len(kept) == 0 {
-			delete(s.MsgMap, msgID)
-		} else {
-			s.MsgMap[msgID] = kept
-		}
-	}
-
-	if m := s.MemberLog[addr]; m != nil {
-		m.MessageCnt = 0
-	}
-
-	logger.Warn(
-		logger.Leader,
-		"Member cleanup completed: addr=%s removed_replicas=%d",
-		addr,
-		removed,
-	)
-}
 
 // ===================================================================================
 // LIVENESS SUPERVISION
@@ -190,6 +159,21 @@ func (s *LeaderServer) cleanupMemberUnsafe(addr string) {
 
 // --- HEARTBEAT WATCHER ---
 // Periodically checks liveness and marks Members DOWN on timeout.
+//
+// IMPORTANT DESIGN DECISION:
+// --------------------------
+// When a Member is marked DOWN, its data is NOT removed from the cluster state.
+// Only the liveness flag (Alive=false) is updated.
+//
+// Rationale:
+// - Leader remains the single source of truth.
+// - Message ownership is preserved to allow recovery if the Member comes back.
+// - Physical data may still exist on disk even if the process is temporarily down.
+// - Logical deletion is avoided unless explicitly triggered by an operator.
+//
+// This results in a non-destructive failure model:
+// - Failure = temporary unavailability
+// - Not equal to data loss
 func (s *LeaderServer) StartHeartbeatWatcher() {
 	logger.Info(logger.Leader, "Heartbeat watcher started (timeout=15s, interval=5s)")
 
@@ -214,7 +198,6 @@ func (s *LeaderServer) StartHeartbeatWatcher() {
 						m.LastSeen.Format(time.RFC3339),
 					)
 					m.Alive = false
-					s.cleanupMemberUnsafe(m.Address)
 					changed = true
 				}
 			}
@@ -289,6 +272,18 @@ func NewLeaderServer(members []string, toleranceFile string) (*LeaderServer, err
 
 // --- REGISTER MEMBER ---
 // Adds a new Member or marks an existing one as recovered.
+//
+// RECOVERY SEMANTICS:
+// -------------------
+// If a previously known Member re-registers:
+// - Its Alive flag is set to true
+// - Its historical message ownership is preserved
+// - No data reconciliation is performed automatically
+//
+// The Leader assumes:
+// "If the Member is alive again, its previously stored data may still be valid."
+//
+// This keeps recovery explicit and predictable.
 func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (*pb.RegisterReply, error) {
 	log := logger.WithContext(ctx, logger.Leader)
 
@@ -349,6 +344,21 @@ func (s *LeaderServer) dialMember(addr string) (*grpc.ClientConn, error) {
 
 // --- STORE ---
 // Replicates the message to TOLERANCE number of alive members.
+//
+// REPLICATION MODEL:
+// ------------------
+// - Only members with Alive=true are considered.
+// - Members are selected based on lowest MessageCnt (simple load balancing).
+// - Replication succeeds only if TOLERANCE writes succeed.
+//
+// GUARANTEES:
+// - Successful Store implies at least TOLERANCE replicas were written.
+// - Partial replication does NOT update MsgMap.
+// - Leader state is persisted only after full success.
+//
+// NON-GUARANTEES:
+// - No rebalancing if membership changes later.
+// - No automatic healing of under-replicated messages.
 func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.StoreResult, error) {
 	log := logger.WithContext(ctx, logger.Leader)
 
@@ -446,6 +456,19 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 
 // --- RETRIEVE ---
 // Attempts to fetch the message from known replicas; falls back to any alive member.
+//
+// READ STRATEGY:
+// --------------
+// 1. Prefer known replica addresses from MsgMap.
+// 2. Skip members that are currently marked as DOWN.
+// 3. Return the first successful response.
+//
+// DESIGN NOTES:
+// - Replica lists are logical, not guaranteed to be physically correct.
+// - If a Member lost its disk but rejoined, retrieval may fail gracefully.
+// - Leader does NOT attempt automatic repair or replica validation.
+//
+// This keeps the read path simple and deterministic.
 func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.StoredMessage, error) {
 	log := logger.WithContext(ctx, logger.Leader)
 
@@ -694,6 +717,14 @@ func (s *LeaderServer) loadState() error {
 
 // --- MEMBER STATUS DISPLAY ---
 // Prints a snapshot of Member state to stdout (for operator use).
+//
+// DISPLAY SEMANTICS:
+// ------------------
+// - Alive=false means "temporarily unreachable", not "data lost".
+// - MsgCnt reflects logical replica ownership tracked by the Leader.
+// - Values are NOT recomputed from Member disks.
+//
+// This view is informational, not authoritative for data correctness.
 func (s *LeaderServer) PrintMemberStats() {
 	// Snapshot member info under lock.
 	s.mu.Lock()

@@ -16,7 +16,7 @@ func TestNewLeaderServer_InitState(t *testing.T) {
 	toleranceFile := filepath.Join(tmp, "tolerance.conf")
 	if err := os.WriteFile(
 		toleranceFile,
-		[]byte("TOLERANCE=1\n"),
+		[]byte("TOLERANCE=4\n"),
 		0644,
 	); err != nil {
 		t.Fatalf("failed to write tolerance file: %v", err)

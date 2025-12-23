@@ -7,17 +7,21 @@
 //
 // From an observability and telemetry perspective, this interceptor:
 //
-// - Counts total gRPC requests by method and status
-// - Measures end-to-end request latency
-// - Exposes metrics suitable for SLI / SLO analysis
-// - Integrates transparently with Prometheus via middleware
+//   - Counts total gRPC requests by method and outcome
+//   - Measures end-to-end request latency
+//   - Produces metrics suitable for SLI / SLO analysis
+//   - Integrates transparently via gRPC middleware
 //
 // The interceptor wraps the actual gRPC handler and records metrics
-// after request completion to ensure accurate duration measurement.
+// *after* request completion to ensure accurate latency measurement.
 //
-// Metrics collected here are:
-// - grpc_requests_total (Counter)
-// - grpc_request_duration_seconds (Histogram)
+// Metrics collected:
+//
+//   - grpc_requests_total (Counter)
+//   - grpc_request_duration_seconds (Histogram)
+//
+// This interceptor is intentionally passive:
+// it does not affect request flow, error handling, or control logic.
 //
 // ===================================================================================
 
@@ -32,9 +36,24 @@ import (
 	"google.golang.org/grpc"
 )
 
-// --- METRICS INTERCEPTOR ---
-// Creates a gRPC UnaryServerInterceptor that records
-// request volume and latency metrics for every RPC.
+// ===================================================================================
+// METRICS INTERCEPTOR
+// ===================================================================================
+//
+// MetricsInterceptor returns a gRPC UnaryServerInterceptor that records
+// request volume and latency metrics for every incoming RPC.
+//
+// Behavior:
+//
+//   - Captures request start time
+//   - Delegates execution to the next interceptor or handler
+//   - Classifies request outcome (success / error)
+//   - Updates Prometheus counters and histograms
+//
+// This interceptor should be placed *after* recovery logic
+// and *before* application-level handlers to ensure all requests
+// are consistently observed.
+
 func MetricsInterceptor() grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
@@ -43,36 +62,65 @@ func MetricsInterceptor() grpc.UnaryServerInterceptor {
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
 
-		// --- REQUEST START TIME ---
-		// Captures the timestamp before invoking the handler
-		// to measure total request processing time.
+		// -----------------------------------------------------------------------
+		// REQUEST START TIMESTAMP
+		// -----------------------------------------------------------------------
+		//
+		// Capture the start time before invoking the handler to measure
+		// total end-to-end request processing latency.
+
 		start := time.Now()
 
-		// --- DELEGATE TO NEXT HANDLER ---
-		// Executes the actual gRPC method (or next interceptor).
+		// -----------------------------------------------------------------------
+		// DELEGATE TO NEXT HANDLER
+		// -----------------------------------------------------------------------
+		//
+		// Execute the actual gRPC method implementation or the next
+		// interceptor in the chain.
+
 		resp, err := handler(ctx, req)
 
-		// --- DURATION CALCULATION ---
-		// Measures end-to-end latency in seconds.
+		// -----------------------------------------------------------------------
+		// DURATION CALCULATION
+		// -----------------------------------------------------------------------
+		//
+		// Compute request duration in seconds, which is the canonical
+		// unit for Prometheus latency metrics.
+
 		duration := time.Since(start).Seconds()
 
-		// --- STATUS DETERMINATION ---
-		// Simplified success/error classification based on handler result.
+		// -----------------------------------------------------------------------
+		// OUTCOME CLASSIFICATION
+		// -----------------------------------------------------------------------
+		//
+		// Requests are classified into a simple success / error model.
+		// This keeps label cardinality low while remaining useful for
+		// high-level error-rate analysis.
+
 		status := "success"
 		if err != nil {
 			status = "error"
 		}
 
-		// --- REQUEST COUNTER UPDATE ---
-		// Increments the total request counter labeled by:
-		// - gRPC method
-		// - request status
+		// -----------------------------------------------------------------------
+		// REQUEST COUNTER UPDATE
+		// -----------------------------------------------------------------------
+		//
+		// Increment the total request counter labeled by:
+		//   - gRPC method name
+		//   - request outcome
+
 		metrics.GrpcRequestsTotal.
 			WithLabelValues(info.FullMethod, status).
 			Inc()
 
-		// --- LATENCY HISTOGRAM UPDATE ---
-		// Observes the request duration for the given gRPC method.
+		// -----------------------------------------------------------------------
+		// LATENCY HISTOGRAM UPDATE
+		// -----------------------------------------------------------------------
+		//
+		// Observe the request latency for the given gRPC method.
+		// This enables percentile-based latency analysis (p50, p95, p99).
+
 		metrics.GrpcRequestDuration.
 			WithLabelValues(info.FullMethod).
 			Observe(duration)
