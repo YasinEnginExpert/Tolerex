@@ -1,53 +1,31 @@
 // ===================================================================================
-// TOLEREX – LEADER SERVER (CONTROL PLANE + DATA PLANE ORCHESTRATION)
+// TOLEREX – LEADER SERVER (CONTROL & DATA PLANE ORCHESTRATION)
 // ===================================================================================
 //
-// This file implements the core Leader-side server logic for the Tolerex
-// distributed, fault-tolerant storage system.
+// This file defines the Leader node in the Tolerex fault-tolerant storage cluster.
 //
-// From a distributed systems perspective, the Leader is responsible for:
+// Responsibilities of Leader:
+// - Manage membership (register new members, track heartbeat/liveness).
+// - Decide replication targets for storing messages (prefer least-loaded members).
+// - Coordinate Store and Retrieve operations via gRPC with cluster members.
+// - Maintain cluster state (members, message replicas) and persist it to disk for recovery.
+// - Provide a local TCP control interface for operators (simple SET/GET commands).
 //
-// - Membership management (dynamic registration + liveness tracking via heartbeats)
-// - Replica placement decisions (selecting target Members for replication)
-// - Coordinating Store/Retrieve operations across Members over mTLS-protected gRPC
-// - Maintaining and persisting cluster metadata (member state + message replica map)
-// - Providing an operator-facing TCP control interface (SET/GET/FS-like commands)
-// - Exposing a live cluster view for operational visibility (stdout dashboard)
+// Key Implementation Details:
+// 1. **RPC Handlers**: Implements RegisterMember, Heartbeat, Store, Retrieve using gRPC.
+// 2. **Replication Strategy**: Stores each message on `Tolerance` members. Selects least-loaded live members to replicate. Attempts replication with timeouts; updates an in-memory message map on success.
+// 3. **Fault Detection**: A heartbeat watcher marks members as DOWN if heartbeat messages stop (beyond timeout).
+// 4. **State Persistence**: Cluster state (membership and message map) is saved to a JSON file (`leader_state.json`) for crash recovery.
+// 5. **Operator Interface**: A simple TCP console (telnet style) provides admin commands (SET to store a message, GET to retrieve).
 //
-// Key subsystems implemented here:
+// **Concurrency Model**:
+// - A single mutex `s.mu` protects all shared state (Members, MemberLog, MsgMap).
+// - Critical sections are kept short to reduce lock contention:contentReference[oaicite:2]{index=2}; expensive operations (network calls, disk I/O) occur outside the lock by snapshotting state as needed.
+// - The heartbeat watcher and RPC handlers run in separate goroutines; state changes are synchronized via the mutex.
 //
-// 1) gRPC RPC Surface:
-//    - RegisterMember: Adds/recovers Members in the cluster registry
-//    - Heartbeat     : Updates liveness timestamps and status
-//    - Store         : Replicates a message to TOLERANCE number of Members
-//    - Retrieve      : Fetches a message from known replicas or any alive Member
-//
-// 2) Replication Strategy:
-//    - Chooses least-loaded Members based on per-Member MessageCnt
-//    - Attempts replication with per-call timeouts and failure isolation
-//    - Updates MsgMap (message → replica addresses) on success
-//
-// 3) Fault Detection:
-//    - Heartbeat watcher periodically marks Members DOWN on timeout
-//
-// 4) State Persistence:
-//    - Saves leader_state.json containing Members, MemberLog, MsgMap
-//    - Loads persisted state at startup if available
-//
-// 5) Local TCP Control Plane:
-//    - Exposes an interactive command interface for local operator usage
-//    - Reuses Store/Retrieve logic for SET/GET commands
-//
-// Concurrency Model:
-//
-// - Shared state (Members, MemberLog, MsgMap) is protected by s.mu
-// - Snapshotting is used where appropriate to reduce lock holding time
-//
-// Security Model:
-//
-// - Leader → Member RPC uses mTLS client credentials
-// - Member dialing uses a bounded context timeout per connection attempt
-//
+// **Security**:
+// - All Leader-to-Member gRPC calls use mutual TLS for authentication (`security.NewMTLSClientCreds`).
+// - The operator TCP interface is intended for local use only, with limited commands.
 // ===================================================================================
 
 package server
@@ -78,18 +56,14 @@ import (
 )
 
 // --- MEMBER LOAD SNAPSHOT ITEM ---
-// Helper struct used to sort Members by stored message count
-// when selecting replication targets.
+// Helper struct used to sort Members by stored message count when selecting targets.
 type memberStat struct {
 	addr  string
 	count int
 }
 
 // --- MEMBER RUNTIME STATE ---
-// Tracks Member metadata used by the Leader for:
-// - liveness supervision
-// - load-aware replica placement
-// - operational visibility (live status view)
+// Metadata tracked by the Leader for each Member (for liveness and load).
 type MemberInfo struct {
 	Address    string
 	AddedAt    time.Time
@@ -99,8 +73,7 @@ type MemberInfo struct {
 }
 
 // --- LEADER SERVER ---
-// Implements the generated gRPC service interface and also hosts
-// Leader-specific coordination state.
+// Implements the gRPC service and holds cluster coordination state.
 type LeaderServer struct {
 	pb.UnimplementedStorageServiceServer
 
@@ -108,7 +81,7 @@ type LeaderServer struct {
 	Members   []string
 	Tolerance int
 
-	// --- MESSAGE → REPLICA ADDRESSES ---
+	// --- MESSAGE → REPLICA ADDRESSES MAP ---
 	MsgMap map[int][]string
 
 	// --- MEMBER METADATA REGISTRY ---
@@ -117,21 +90,20 @@ type LeaderServer struct {
 	// --- SHARED STATE LOCK ---
 	mu sync.Mutex
 
-	// --- DIAL OPTION FOR LEADER → MEMBER (mTLS) ---
+	// --- mTLS DIAL OPTION FOR LEADER→MEMBER RPC ---
 	memberDialOpt grpc.DialOption
 
+	// Optional function hooks for testing overrides.
 	dialFn      func(addr string) (*grpc.ClientConn, error)
 	replicateFn func(ctx context.Context, addr string, msg *pb.StoredMessage) bool
 
-	// --- Runtime listeners (introspection only) ---
-	TcpListener  net.Listener // TCP CLI (telnet-style console)
+	// --- RUNTIME LISTENERS ---
+	TcpListener  net.Listener // Operator TCP console
 	GrpcListener net.Listener // gRPC service listener
-
 }
 
 // --- PERSISTED LEADER STATE ---
-// Serialized to disk for restart recovery.
-// (Members + MemberLog + MsgMap)
+// Struct for JSON serialization of Leader state (Members, MemberLog, MsgMap).
 type LeaderState struct {
 	Members   []string
 	MemberLog map[string]*MemberInfo
@@ -158,25 +130,58 @@ const (
 // ===================================================================================
 
 // --- HEARTBEAT RPC ---
-// Updates a Member's liveness timestamps and marks it alive.
+// Updates a Member's liveness timestamp and marks it alive.
 func (s *LeaderServer) Heartbeat(ctx context.Context, hb *pb.HeartbeatRequest) (*emptypb.Empty, error) {
 	log := logger.WithContext(ctx, logger.Leader)
 
-	// --- MUTEX-PROTECTED STATE UPDATE ---
+	// Mutex-protected update of LastSeen and Alive status.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	member, ok := s.MemberLog[hb.Address]
 	if !ok {
-		// Unknown Member: ignore heartbeat (Member must register first)
+		// Ignore heartbeat from unknown member (must register first).
 		return &emptypb.Empty{}, nil
 	}
-
 	member.LastSeen = time.Now()
 	member.Alive = true
 	logger.Debug(log, "Heartbeat received from %s", hb.Address)
-
 	return &emptypb.Empty{}, nil
+}
+
+// cleanupMemberUnsafe removes all replicas belonging to a DOWN member
+// and resets its load counters.
+// MUST be called with s.mu held.
+func (s *LeaderServer) cleanupMemberUnsafe(addr string) {
+	removed := 0
+
+	for msgID, replicas := range s.MsgMap {
+		var kept []string
+		for _, r := range replicas {
+			if r != addr {
+				kept = append(kept, r)
+			} else {
+				removed++
+			}
+		}
+
+		if len(kept) == 0 {
+			delete(s.MsgMap, msgID)
+		} else {
+			s.MsgMap[msgID] = kept
+		}
+	}
+
+	if m := s.MemberLog[addr]; m != nil {
+		m.MessageCnt = 0
+	}
+
+	logger.Warn(
+		logger.Leader,
+		"Member cleanup completed: addr=%s removed_replicas=%d",
+		addr,
+		removed,
+	)
 }
 
 // ===================================================================================
@@ -184,7 +189,7 @@ func (s *LeaderServer) Heartbeat(ctx context.Context, hb *pb.HeartbeatRequest) (
 // ===================================================================================
 
 // --- HEARTBEAT WATCHER ---
-// Periodically checks Member liveness and marks Members DOWN on timeout.
+// Periodically checks liveness and marks Members DOWN on timeout.
 func (s *LeaderServer) StartHeartbeatWatcher() {
 	logger.Info(logger.Leader, "Heartbeat watcher started (timeout=15s, interval=5s)")
 
@@ -196,49 +201,50 @@ func (s *LeaderServer) StartHeartbeatWatcher() {
 			logger.Debug(logger.Leader, "Heartbeat watcher tick")
 			s.mu.Lock()
 			now := time.Now()
+			changed := false
 
 			for _, m := range s.MemberLog {
 				if m.LastSeen.IsZero() {
 					m.LastSeen = m.AddedAt
 				}
-				if now.Sub(m.LastSeen) > heartbeatTimeout {
-					if m.Alive {
-						logger.Warn(logger.Leader,
-							"Member marked DOWN: addr=%s lastSeen=%s",
-							m.Address,
-							m.LastSeen.Format(time.RFC3339),
-						)
-						m.Alive = false
-						_ = s.saveStateUnsafe()
-					}
+				if now.Sub(m.LastSeen) > heartbeatTimeout && m.Alive {
+					logger.Warn(logger.Leader,
+						"Member marked DOWN: addr=%s lastSeen=%s",
+						m.Address,
+						m.LastSeen.Format(time.RFC3339),
+					)
+					m.Alive = false
+					s.cleanupMemberUnsafe(m.Address)
+					changed = true
 				}
 			}
 			s.mu.Unlock()
+			if changed {
+				_ = s.saveState()
+			}
 		}
 	}()
 }
 
 // ===================================================================================
-// LEADER CONSTRUCTION & SECURITY BOOTSTRAP
+// LEADER INITIALIZATION & SECURITY
 // ===================================================================================
 
 // --- NEW LEADER SERVER ---
-// Loads tolerance config, initializes registries, prepares mTLS dial option,
-// and attempts to load persisted leader state.
+// Loads config, initializes registries and mTLS, and restores any persisted state.
 func NewLeaderServer(members []string, toleranceFile string) (*LeaderServer, error) {
 	logger.Info(logger.Leader, "LeaderServer initialization started")
 	logger.Info(logger.Leader, "Tolerance file path: %s", toleranceFile)
 
-	// --- TOLERANCE LOAD ---
+	// Load tolerance configuration value.
 	tolerance, err := config.ReadTolerance(toleranceFile)
 	if err != nil {
 		return nil, err
 	}
 
-	// --- INITIAL MEMBER REGISTRY ---
+	// Initialize member registry.
 	memberLog := make(map[string]*MemberInfo)
 	now := time.Now()
-
 	for _, addr := range members {
 		memberLog[addr] = &MemberInfo{
 			Address:    addr,
@@ -256,23 +262,24 @@ func NewLeaderServer(members []string, toleranceFile string) (*LeaderServer, err
 		MemberLog: memberLog,
 	}
 
-	// --- mTLS CLIENT CREDS: LEADER → MEMBER ---
-	creds, err := security.NewMTLSClientCreds(
-		"config/tls/leader.crt",
-		"config/tls/leader.key",
-		"config/tls/ca.crt",
-		"member",
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to init leader->member mTLS creds: %w", err)
+	// Prepare mTLS credentials for Leader→Member RPC (if not in test mode).
+	if os.Getenv("TOLEREX_TEST_MODE") != "1" {
+		creds, err := security.NewMTLSClientCreds(
+			"config/tls/leader.crt",
+			"config/tls/leader.key",
+			"config/tls/ca.crt",
+			"member",
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to init leader->member mTLS creds: %w", err)
+		}
+		leader.memberDialOpt = grpc.WithTransportCredentials(creds)
 	}
-	leader.memberDialOpt = grpc.WithTransportCredentials(creds)
 
-	// --- LOAD PERSISTED STATE (BEST-EFFORT) ---
+	// Load persisted state from disk (best-effort).
 	if err := leader.loadState(); err != nil {
 		logger.Warn(logger.Leader, "Failed to load leader state: %v", err)
 	}
-
 	return leader, nil
 }
 
@@ -286,7 +293,6 @@ func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (
 	log := logger.WithContext(ctx, logger.Leader)
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	addr := req.Address
 
@@ -297,9 +303,9 @@ func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (
 		} else {
 			logger.Debug(log, "Member already registered and alive: %s", addr)
 		}
-
 		m.Alive = true
 		m.LastSeen = time.Now()
+		s.mu.Unlock()
 		return &pb.RegisterReply{Ok: true}, nil
 	}
 
@@ -313,9 +319,10 @@ func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (
 		LastSeen:   now,
 		Alive:      true,
 	}
-
-	_ = s.saveStateUnsafe()
-
+	s.mu.Unlock()
+	if err := s.saveState(); err != nil {
+		logger.Warn(log, "Failed to persist new member state: %v", err)
+	}
 	logger.Info(log, "New member registered: %s", addr)
 	return &pb.RegisterReply{Ok: true}, nil
 }
@@ -325,24 +332,15 @@ func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (
 // ===================================================================================
 
 // --- DIAL MEMBER (mTLS) ---
-// Establishes a bounded-timeout mTLS gRPC connection to a Member.
+// Establishes a short-lived mTLS gRPC connection to a Member.
 func (s *LeaderServer) dialMember(addr string) (*grpc.ClientConn, error) {
-
 	if s.dialFn != nil {
-		return s.dialFn(addr)
+		return s.dialFn(addr) // use test override if provided
 	}
-
 	logger.Debug(logger.Leader, "Dialing member %s with mTLS", addr)
-
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
-
-	return grpc.DialContext(
-		ctx,
-		addr,
-		s.memberDialOpt,
-		grpc.WithBlock(),
-	)
+	return grpc.DialContext(ctx, addr, s.memberDialOpt, grpc.WithBlock())
 }
 
 // ===================================================================================
@@ -350,8 +348,7 @@ func (s *LeaderServer) dialMember(addr string) (*grpc.ClientConn, error) {
 // ===================================================================================
 
 // --- STORE ---
-// Replicates the message to TOLERANCE number of alive Members.
-// Chooses least-loaded Members first using MessageCnt as a heuristic.
+// Replicates the message to TOLERANCE number of alive members.
 func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.StoreResult, error) {
 	log := logger.WithContext(ctx, logger.Leader)
 
@@ -359,7 +356,7 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 
 	var stats []memberStat
 
-	// --- SNAPSHOT MEMBERS + LOAD COUNTS ---
+	// Snapshot members and load counts under lock.
 	s.mu.Lock()
 	for _, addr := range s.Members {
 		info := s.MemberLog[addr]
@@ -371,13 +368,11 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 	tol := s.Tolerance
 	s.mu.Unlock()
 
-	// --- SORT BY LEAST-LOADED ---
+	// Select up to TOLERANCE least-loaded members.
 	sort.Slice(stats, func(i, j int) bool {
 		return stats[i].count < stats[j].count
 	})
-
-	// --- SELECT TARGETS UP TO TOLERANCE ---
-	var selected []string
+	selected := make([]string, 0, tol)
 	for _, st := range stats {
 		if len(selected) == tol {
 			break
@@ -390,79 +385,58 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 
 	logger.Debug(log, "Replication targets selected: %v", selected)
 
-	// --- ATTEMPT REPLICATION ---
-	var successful []string
-
+	successful := make([]string, 0, tol)
 	for _, addr := range selected {
-		if len(successful) == tol {
-			s.mu.Lock()
-			s.MsgMap[int(msg.Id)] = successful
-			s.mu.Unlock()
-			_ = s.saveState()
-			return &pb.StoreResult{Ok: true}, nil
-		}
-
+		var success bool
 		if s.replicateFn != nil {
-			if s.replicateFn(ctx, addr, msg) {
-				successful = append(successful, addr)
-
-				s.mu.Lock()
-				if s.MemberLog[addr] != nil {
-					s.MemberLog[addr].MessageCnt++
-				}
-				s.mu.Unlock()
+			// Use injected replication function (for testing).
+			success = s.replicateFn(ctx, addr, msg)
+			// (No logging on failure in test mode)
+		} else {
+			conn, err := s.dialMember(addr)
+			if err != nil {
+				logger.Warn(log, "Connection error to %s: %v", addr, err)
+				continue
 			}
-			continue
+			client := pb.NewStorageServiceClient(conn)
+			ctx2, cancel := context.WithTimeout(ctx, rpcTimeout)
+			res, callErr := client.Store(ctx2, msg)
+			cancel()
+			conn.Close()
+			if callErr == nil && res != nil && res.Ok {
+				success = true
+			} else {
+				logger.Error(log, "Replication failed: msg_id=%d member=%s err=%v", msg.Id, addr, callErr)
+			}
 		}
-
-		conn, err := s.dialMember(addr)
-		if err != nil {
-			logger.Warn(log, "Connection error to %s: %v", addr, err)
-			continue
-		}
-
-		client := pb.NewStorageServiceClient(conn)
-
-		// --- PER-CALL TIMEOUT ---
-		ctx2, cancel := context.WithTimeout(ctx, rpcTimeout)
-		res, callErr := client.Store(ctx2, msg)
-		cancel()
-		conn.Close()
-
-		if callErr == nil && res != nil && res.Ok {
+		if success {
 			successful = append(successful, addr)
+			if len(successful) == tol {
+				break // achieved required replication count
+			}
+		}
+	}
 
-			// --- UPDATE LOAD COUNTER ---
-			s.mu.Lock()
+	// Update state based on replication results.
+	if len(successful) > 0 {
+		s.mu.Lock()
+		for _, addr := range successful {
 			if s.MemberLog[addr] != nil {
 				s.MemberLog[addr].MessageCnt++
 			}
-			s.mu.Unlock()
-		} else {
-			// Replication failure does NOT imply member failure.
-			// Liveness is decided exclusively by the heartbeat watcher.
-			logger.Error(
-				log,
-				"Replication failed: msg_id=%d member=%s err=%v",
-				msg.Id,
-				addr,
-				callErr,
-			)
+		}
+		full := len(successful) >= tol
+		if full {
+			// Store a copy of the replica list for this message ID.
+			s.MsgMap[int(msg.Id)] = append([]string(nil), successful...)
+		}
+		s.mu.Unlock()
+		if full {
+			logger.Info(log, "Store replication successful: msg_id=%d replicas=%v", msg.Id, successful)
+			_ = s.saveState()
+			return &pb.StoreResult{Ok: true}, nil
 		}
 	}
-
-	// --- COMMIT REPLICA MAP ON FULL SUCCESS ---
-	if len(successful) == tol {
-		s.mu.Lock()
-		s.MsgMap[int(msg.Id)] = successful
-		s.mu.Unlock()
-
-		logger.Info(log, "Store replication successful: msg_id=%d replicas=%v", msg.Id, successful)
-
-		_ = s.saveState()
-		return &pb.StoreResult{Ok: true}, nil
-	}
-
 	return &pb.StoreResult{Ok: false, Err: "Replication incomplete"}, nil
 }
 
@@ -471,95 +445,77 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 // ===================================================================================
 
 // --- RETRIEVE ---
-// Attempts to retrieve the message from known replicas.
-// If replicas are unknown, falls back to trying any alive Member.
+// Attempts to fetch the message from known replicas; falls back to any alive member.
 func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.StoredMessage, error) {
 	log := logger.WithContext(ctx, logger.Leader)
 
 	logger.Info(log, "Retrieve request received: msg_id=%d", req.Id)
 
-	// --- SNAPSHOT REPLICA MAP + MEMBERS ---
+	// Snapshot the replica map and members list under lock.
 	s.mu.Lock()
 	replicas, ok := s.MsgMap[int(req.Id)]
 	members := append([]string(nil), s.Members...)
 	s.mu.Unlock()
 
-	targets := replicas
-	if !ok || len(replicas) == 0 {
-		logger.Warn(log,
-			"Replica map empty for msg_id=%d, falling back to all members",
-			req.Id,
-		)
+	// Decide which targets to try.
+	var targets []string
+	if ok && len(replicas) > 0 {
+		targets = replicas
+	} else {
+		logger.Warn(log, "Replica map empty for msg_id=%d, trying all members", req.Id)
 		targets = members
 	}
 
-	// --- TRY TARGETS IN ORDER ---
+	// Try each target in order until the message is found.
 	for _, addr := range targets {
 		s.mu.Lock()
 		info := s.MemberLog[addr]
 		alive := info != nil && info.Alive
 		s.mu.Unlock()
-
 		if !alive {
 			continue
 		}
-
 		conn, err := s.dialMember(addr)
 		if err != nil {
-			logger.Warn(log, "GET connect failed %s: %v", addr, err)
+			logger.Warn(log, "Retrieve connect failed to %s: %v", addr, err)
 			continue
 		}
-
 		client := pb.NewStorageServiceClient(conn)
-
 		ctx2, cancel := context.WithTimeout(ctx, rpcTimeout)
 		res, callErr := client.Retrieve(ctx2, req)
 		cancel()
 		conn.Close()
-
 		if callErr == nil && res != nil {
-			return res, nil
+			return res, nil // return the first successful retrieval
 		}
 	}
-
 	// If not found on any candidate, return NotFound.
 	return nil, status.Error(codes.NotFound, "message not found")
 }
-
-// leaderListeningPorts returns TCP listening sockets owned
-// by the current leader process.
-//
-// This is strictly read-only introspection.
-// No user-controlled command execution is performed.
 
 // ===================================================================================
 // TCP CONTROL PLANE (LOCAL OPERATOR INTERFACE)
 // ===================================================================================
 
 // --- TCP CLIENT HANDLER ---
-// Provides a simple interactive command protocol over TCP.
-// This is intended for localhost-only operator usage (as configured by main).
+// Simple interactive console for operator commands (SET/GET).
 func (s *LeaderServer) HandleClient(conn net.Conn) {
 	defer conn.Close()
-
-	// --- SYNTHETIC REQUEST ID FOR TCP SESSION ---
 	reqID := fmt.Sprintf("tcp-%d", time.Now().UnixNano())
 	ctx := context.WithValue(context.Background(), logger.RequestIDKey, reqID)
 	log := logger.WithContext(ctx, logger.Leader)
-
 	logger.Info(log, "TCP client connected: %s", conn.RemoteAddr())
 
 	reader := bufio.NewScanner(conn)
 	writer := bufio.NewWriter(conn)
 
-	// --- BANNER / HELP TEXT ---
+	// Command reference banner.
 	banner := []string{
 		"---------------------------------------",
 		"TOLEREX - Leader Node",
 		"---------------------------------------",
 		"",
 		"Commands:",
-		"",
 		"  SET <id> <message>",
 		"  <N> SET <message>",
 		"  GET <id>",
@@ -569,17 +525,15 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 		"Examples:",
 		"  SET 10 HELLO",
 		"  1000 SET HELLO",
-		"",
 		"---------------------------------------",
 	}
-
 	for _, line := range banner {
 		fmt.Fprint(writer, line+"\r\n")
 	}
 	fmt.Fprint(writer, "tolerex> ")
 	writer.Flush()
 
-	// --- COMMAND LOOP ---
+	// Command loop.
 	for reader.Scan() {
 		line := strings.TrimSpace(reader.Text())
 		logger.Debug(log, "TCP command received: %s", line)
@@ -588,49 +542,37 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 			writer.Flush()
 			continue
 		}
-
 		parts := strings.Fields(line)
 		cmd := strings.ToUpper(parts[0])
 
 		switch cmd {
-		// --- SET (STORE) ---
 		case "SET":
 			if len(parts) < 3 {
 				fmt.Fprint(writer, "ERROR: SET <id> <message>\r\n")
 				break
 			}
-
 			id, err := strconv.Atoi(parts[1])
 			if err != nil {
 				fmt.Fprint(writer, "ERROR: id must be numeric\r\n")
 				break
 			}
-
 			msg := strings.Join(parts[2:], " ")
-			res, _ := s.Store(ctx, &pb.StoredMessage{
-				Id:   int32(id),
-				Text: msg,
-			})
-
+			res, _ := s.Store(ctx, &pb.StoredMessage{Id: int32(id), Text: msg})
 			if res != nil && res.Ok {
 				fmt.Fprint(writer, "OK\r\n")
 			} else {
 				fmt.Fprint(writer, "ERROR: store failed\r\n")
 			}
-
-		// --- GET (RETRIEVE) ---
 		case "GET":
 			if len(parts) != 2 {
 				fmt.Fprint(writer, "ERROR: GET <id>\r\n")
 				break
 			}
-
 			id, err := strconv.Atoi(parts[1])
 			if err != nil {
 				fmt.Fprint(writer, "ERROR: id must be numeric\r\n")
 				break
 			}
-
 			res, err := s.Retrieve(ctx, &pb.MessageID{Id: int32(id)})
 			if err != nil {
 				st, ok := status.FromError(err)
@@ -642,38 +584,32 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 				break
 			}
 			fmt.Fprint(writer, res.Text+"\r\n")
-		// --- HELP ---
 		case "HELP":
 			for _, line := range banner {
 				fmt.Fprint(writer, line+"\r\n")
 			}
-
-		// --- QUIT / EXIT ---
 		case "QUIT", "EXIT":
-			fmt.Fprint(writer, "Bye \r\n")
+			fmt.Fprint(writer, "Bye\r\n")
 			writer.Flush()
 			logger.Info(log, "TCP client disconnected: %s", conn.RemoteAddr())
 			return
-
-		// --- UNKNOWN COMMAND ---
 		default:
 			fmt.Fprint(writer, "ERROR: unknown command\r\n")
 		}
-
 		fmt.Fprint(writer, "tolerex> ")
 		writer.Flush()
 	}
-
 	if err := reader.Err(); err != nil {
 		logger.Warn(log, "TCP client error: %v", err)
 	}
 }
 
 // ===================================================================================
-// STATE PERSISTENCE (SAVE / LOAD)
+// STATE PERSISTENCE (SAVE/LOAD)
 // ===================================================================================
 
-// --- SAVE STATE (LOCKING WRAPPER) ---
+// --- SAVE STATE (THREAD-SAFE) ---
+// Acquires the lock and writes Leader state to disk.
 func (s *LeaderServer) saveState() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -681,14 +617,13 @@ func (s *LeaderServer) saveState() error {
 }
 
 // --- SAVE STATE (UNSAFE) ---
-// Must be called while s.mu is already held.
+// Must be called with s.mu already held. Saves state to leader_state.json.
 func (s *LeaderServer) saveStateUnsafe() error {
 	// --- SNAPSHOT MEMBERS ---
 	members := append([]string(nil), s.Members...)
 
 	// --- DEEP COPY MEMBER LOG ---
 	memberLog := make(map[string]*MemberInfo, len(s.MemberLog))
-
 	for k, v := range s.MemberLog {
 		if v == nil {
 			continue
@@ -704,6 +639,7 @@ func (s *LeaderServer) saveStateUnsafe() error {
 	}
 
 	// --- JSON SERIALIZATION ---
+	// Consider using a faster JSON library (e.g., jsoniter) for performance:contentReference[oaicite:3]{index=3}
 	data, err := json.MarshalIndent(LeaderState{
 		Members:   members,
 		MemberLog: memberLog,
@@ -713,7 +649,7 @@ func (s *LeaderServer) saveStateUnsafe() error {
 		return err
 	}
 
-	// --- ENSURE DIRECTORY + WRITE FILE ---
+	// --- WRITE TO FILE ---
 	path := stateFilePath()
 	_ = os.MkdirAll(filepath.Dir(path), 0755)
 	err = os.WriteFile(path, data, 0644)
@@ -724,72 +660,57 @@ func (s *LeaderServer) saveStateUnsafe() error {
 }
 
 // --- LOAD STATE ---
-// Best-effort load from disk. Missing file is treated as empty state.
+// Loads saved state from disk at startup (if file exists).
 func (s *LeaderServer) loadState() error {
 	data, err := os.ReadFile(stateFilePath())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			return nil // no state file, start fresh
 		}
 		return err
 	}
-
 	var state LeaderState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return err
 	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	s.Members = state.Members
-	s.MemberLog = state.MemberLog
 	if state.MemberLog == nil {
 		state.MemberLog = make(map[string]*MemberInfo)
 	}
 	if state.MsgMap == nil {
 		state.MsgMap = make(map[int][]string)
 	}
+	s.Members = state.Members
+	s.MemberLog = state.MemberLog
 	s.MsgMap = state.MsgMap
-
-	logger.Info(logger.Leader,
-		"Leader state loaded: members=%d msgMap=%d",
-		len(s.Members),
-		len(s.MsgMap),
-	)
+	logger.Info(logger.Leader, "Leader state loaded: members=%d, msgMap entries=%d", len(s.Members), len(s.MsgMap))
 	return nil
 }
 
 // ===================================================================================
-// LIVE OPERATOR VIEW
+// OPERATOR VISIBILITY
 // ===================================================================================
 
 // --- MEMBER STATUS DISPLAY ---
-// Prints a live snapshot of Member state to stdout.
-// Intended for operator visibility (not persistent logging).
+// Prints a snapshot of Member state to stdout (for operator use).
 func (s *LeaderServer) PrintMemberStats() {
-	// --- SNAPSHOT MEMBER INFO UNDER LOCK ---
+	// Snapshot member info under lock.
 	s.mu.Lock()
 	snapshot := make([]MemberInfo, 0, len(s.MemberLog))
 	for _, info := range s.MemberLog {
-		if info == nil {
-			continue
+		if info != nil {
+			snapshot = append(snapshot, *info)
 		}
-		snapshot = append(snapshot, *info)
 	}
 	s.mu.Unlock()
 
-	// --- CLEAR SCREEN + RENDER ---
-	fmt.Print("\033[2J\033[H")
+	// Render the snapshot.
+	fmt.Print("\033[2J\033[H") // clear screen
 	fmt.Println("==== MEMBER STATUS (LIVE VIEW) ====")
 	for _, info := range snapshot {
-		fmt.Printf(
-			"Addr=%s | Alive=%v | LastSeen=%s | MsgCnt=%d\n",
-			info.Address,
-			info.Alive,
-			info.LastSeen.Format("15:04:05"),
-			info.MessageCnt,
-		)
+		fmt.Printf("Addr=%s | Alive=%v | LastSeen=%s | MsgCnt=%d\n",
+			info.Address, info.Alive, info.LastSeen.Format("15:04:05"), info.MessageCnt)
 	}
 	fmt.Println("==================================")
 }

@@ -1,0 +1,16 @@
+goos: windows
+goarch: amd64
+pkg: tolerex/internal/storage
+cpu: AMD Ryzen 5 5600H with Radeon Graphics         
+BenchmarkStorage_UnbufferedWrite-12    	    4916	    223995 ns/op	     857 B/op	       3 allocs/op
+BenchmarkStorage_UnbufferedWrite-12    	    5524	    190683 ns/op	     840 B/op	       3 allocs/op
+BenchmarkStorage_UnbufferedWrite-12    	    5643	    193372 ns/op	     856 B/op	       3 allocs/op
+BenchmarkStorage_UnbufferedWrite-12    	    6108	    187861 ns/op	     856 B/op	       3 allocs/op
+BenchmarkStorage_UnbufferedWrite-12    	    6643	    192249 ns/op	     856 B/op	       3 allocs/op
+BenchmarkStorage_BufferedWrite-12      	18303926	        73.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStorage_BufferedWrite-12      	20594352	        62.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStorage_BufferedWrite-12      	23635446	        55.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStorage_BufferedWrite-12      	20829355	        56.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStorage_BufferedWrite-12      	22595210	        64.81 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	tolerex/internal/storage	13.340s
