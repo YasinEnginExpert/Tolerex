@@ -310,6 +310,12 @@ go mod download
 ```
 ---
 
+### Test 1 – Initial System Validation
+In Test 1, the Leader node is started, Member nodes join the cluster, and basic client operations are executed to verify correct communication and data flow.
+
+[![Test 1 Video](https://img.youtube.com/vi/kz0HX8aq4wQ/0.jpg)](https://youtu.be/kz0HX8aq4wQ)
+
+
 ### Books
 
 - **Network Programming with Go**  
@@ -344,4 +350,5 @@ go mod download
   - Documentation improvement
 
   - Conceptual explanations of distributed systems and Go internals
+
 
