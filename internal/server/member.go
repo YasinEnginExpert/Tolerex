@@ -187,7 +187,8 @@ func (s *MemberServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 			req.Id,
 			time.Since(start),
 		)
-		return &pb.StoredMessage{}, nil
+
+		return nil, status.Error(codes.NotFound, "message not found")
 	}
 
 	// (3) Cancellation-aware after disk I/O
