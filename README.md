@@ -17,7 +17,7 @@
 </p>
 
 <p>
-  <b>Tolerex</b> is a <b>fault-tolerant distributed message storage system</b>  
+  <b>Tolerex</b> is a <b>fault-tolerant distributed message storage system</b><br/>
   developed as part of the <b>System Programming</b> course.
 </p>
 
@@ -27,40 +27,58 @@
 </p>
 
 <p>
-  <a href="#-quick-start">⚡ Quick Start</a> •
-  <a href="#-architecture">🏗️ Architecture</a> •
-  <a href="#-test-scenarios">🧪 Test Scenarios</a> •
-  <a href="#-project-structure">📦 Project Structure</a>
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#test-scenarios">Test Scenarios</a> •
+  <a href="#project-structure">Project Structure</a>
 </p>
 
 </div>
 
-<div align="center">
-
-<img src="https://user-images.githubusercontent.com/74038190/212284068-b4bce7fa-2c74-4c5b-8c48-8e1f1c6e9b06.gif" width="800"/>
-
-</div>
+---
 
 ---
 
 ## Project Overview
 
-This project implements a **distributed, fault-tolerant message storage system**
-based on a **leader–replica (member) architecture**.
+This project implements a distributed, fault-tolerant message storage system
+based on a leader–replica (member) architecture.
 
-The system is inspired by modern distributed platforms such as  
-**Apache Kafka** and **RabbitMQ**, and focuses on demonstrating:
+The system is inspired by modern distributed platforms such as
+Apache Kafka and RabbitMQ, and focuses on demonstrating:
 
 - Replication and fault tolerance
 - Load-balanced data distribution
 - Crash-aware read recovery
 - Disk-based persistent storage
-- Secure inter-node communication using **gRPC + mTLS**
+- Secure inter-node communication using gRPC and mTLS
 
-Client interaction is performed using a **custom lightweight text-based protocol**
-called **HaToKuSe (Hata-Tolere Kuyruk Servisi)**.
+Client interaction is performed using a custom lightweight text-based protocol
+called HaToKuSe (Hata-Tolere Kuyruk Servisi).
 
 ---
+
+## Quick Start
+
+### Prerequisites
+- Go 1.21+
+- Protocol Buffers compiler (protoc)
+- OpenSSL (for mTLS certificates)
+
+### Clone Repository
+```bash
+git clone https://github.com/YasinEnginExpert/Tolerex.git
+cd Tolerex
+go mod tidy
+go run cmd/leader/main.go
+go run cmd/member/main.go
+go run client/test_client.go
+```
+OR
+```bash
+go run cmd/cluster_launcher/cluster_launcher.go
+```
+
 
 ## 🏗️ Architecture
 
@@ -310,6 +328,54 @@ go mod download
 ```
 ---
 
+### Test 1 – Initial System Validation
+In Test 1, the Leader node is started, Member nodes join the cluster, and basic client operations are executed to verify correct communication and data flow.
+
+[![Test 1 Video](https://img.youtube.com/vi/kz0HX8aq4wQ/0.jpg)](https://youtu.be/kz0HX8aq4wQ)
+
+### Test 2 – Disk-Based Message Storage (Single Node)
+In Test 2, messages are stored on disk using a single node. Each message is written to a separate file, and basic SET and GET operations are performed to verify correct disk read and write behavior. Buffered and unbuffered I/O approaches are introduced.
+
+[![Test 2 Video](https://img.youtube.com/vi/mqYZ8ZRT5D4/0.jpg)](https://youtu.be/mqYZ8ZRT5D4)
+
+
+### Test 3 – gRPC Message Model (Protobuf)
+In Test 3, message exchange between the Leader and Members is modeled using Protobuf. A basic gRPC service is defined, and messages are sent and received using Protobuf-based data structures. At this stage, the focus is on establishing gRPC functionality rather than distributed execution.
+
+[![Test 3 Video](https://img.youtube.com/vi/evnN6bgofg8/0.jpg)](https://youtu.be/evnN6bgofg8)
+
+
+### Test 4 – Distributed Logging with Fault Tolerance (Tolerance=1,2)
+In Test 4, a basic distributed logging mechanism is implemented for fault tolerance levels 1 and 2. The Leader stores incoming messages locally and replicates them to selected Members via gRPC based on the configured tolerance value. Read operations retrieve the message from the Leader or available Members.
+
+[![Test 4 Video](https://img.youtube.com/vi/-CHNPo6JEkc/0.jpg)](https://youtu.be/-CHNPo6JEkc)
+
+### Test 5 – Reserved (Design Transition Phase)
+
+Test 5 was intentionally reserved for architectural refactoring
+during the transition from single-node logic to generalized
+fault-tolerant replication.
+
+
+### Test 6 – General Fault Tolerance (n) and Load Balancing
+In Test 6, a generalized fault tolerance mechanism is implemented for tolerance values from 1 to 7. Messages are distributed among Members using a balanced selection strategy (such as round-robin), and the system behavior under multiple SET operations is observed to evaluate load balancing.
+
+[![Test 6 Video](https://img.youtube.com/vi/TSHtgNh90gI/0.jpg)](https://youtu.be/TSHtgNh90gI)
+
+### Test 7 – Crash Scenarios and Recovery
+In Test 7, crash scenarios are simulated by manually stopping Member nodes. During GET operations, the Leader detects failed Members, marks them as unavailable, and successfully retrieves messages from the remaining active nodes, demonstrating basic recovery behavior.
+
+[![Test 7 Video](https://img.youtube.com/vi/3mGIgtAFrmg/0.jpg)](https://youtu.be/3mGIgtAFrmg)
+
+## Future Work
+
+- Leader election mechanism
+- Dynamic cluster membership
+- WAL-based durability
+- Snapshotting and log compaction
+- Raft-based consensus integration
+- Benchmarking and performance analysis
+
 ### Books
 
 - **Network Programming with Go**  
@@ -344,4 +410,7 @@ go mod download
   - Documentation improvement
 
   - Conceptual explanations of distributed systems and Go internals
+
+
+
 
