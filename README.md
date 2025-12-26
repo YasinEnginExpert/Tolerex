@@ -35,7 +35,6 @@
 </p>
 
 </div>
-
 ---
 
 ## Project Overview
@@ -163,6 +162,7 @@ flowchart TB
     R1 -->|ACK| Leader
     R2 -->|ACK| Leader
     RN -->|ACK| Leader
+```
 ---
 
 ## Project Structure
@@ -263,12 +263,12 @@ This graph represents:
 - Dependency depth and centrality
 - Potential coupling and refactoring points
 
-```md
+
 To regenerate this graph locally:
 
 ```bash
 go mod graph
-
+```
 ## Test Scenarios
 
 ### Test 1 – Initial System Validation
@@ -353,6 +353,7 @@ In Test 7, crash scenarios are simulated by manually stopping Member nodes. Duri
   - Documentation improvement
 
   - Conceptual explanations of distributed systems and Go internals
+
 
 
 
