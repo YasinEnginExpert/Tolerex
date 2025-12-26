@@ -29,14 +29,12 @@
 <p>
   <a href="#quick-start">Quick Start</a> •
   <a href="#architecture">Architecture</a> •
+  <a href="#dependencies">Dependencies</a> •
   <a href="#test-scenarios">Test Scenarios</a> •
   <a href="#project-structure">Project Structure</a>
 </p>
 
 </div>
-
----
-
 ---
 
 ## Project Overview
@@ -75,12 +73,13 @@ go run cmd/member/main.go
 go run client/test_client.go
 ```
 OR
+
 ```bash
 go run cmd/cluster_launcher/cluster_launcher.go
 ```
 
 
-## 🏗️ Architecture
+## Architecture
 
 Tolerex follows a **centralized leader-based architecture**.
 
@@ -160,9 +159,9 @@ flowchart TB
     R1 -->|ACK| Leader
     R2 -->|ACK| Leader
     RN -->|ACK| Leader
-````
 ---
-### Project Structure
+
+## Project Structure
 ```text
 .
 ├── go.mod
@@ -234,7 +233,7 @@ flowchart TB
 This project is developed using Visual Studio Code with the following recommended extensions for an efficient Go + gRPC + Protobuf workflow:
 
 - **Go (Go Team at Google)** – Go language support, formatting, and debugging
-- **protobuf (kanging)** – Protobuf syntax highlightin
+- **protobuf (kanging)** – Protobuf syntax highlighting
 - **Proto Lint (Plex Systems)** – Protobuf linting and best practices
 - **Error Lens (Alexander)** – Inline error highlighting
 - **Better Comments (Aaron Bond)** – Improved code comment readability
@@ -246,87 +245,27 @@ This project is developed using Visual Studio Code with the following recommende
 
 ## Dependencies
 
-The following Go libraries and frameworks are used in this project.
+All project dependencies are managed using **Go Modules**.
 
-### Core Dependencies
+Instead of listing individual libraries, the full dependency structure of the project
+is visualized below as a dependency graph generated directly from `go.mod`.
 
-- **google.golang.org/grpc**  
-  Provides high-performance, type-safe RPC communication between distributed nodes.
+<p align="center">
+  <img src="deps.png" alt="Tolerex Dependency Graph" width="90%">
+</p>
 
-- **google.golang.org/protobuf**  
-  Used for defining and serializing structured gRPC messages.
+This graph represents:
+- Direct and transitive Go module dependencies
+- Dependency depth and centrality
+- Potential coupling and refactoring points
 
-- **github.com/google/uuid**  
-  Generates universally unique identifiers (UUIDs) for requests and node identification.
-
-- **github.com/prometheus/client_golang**  
-  Exposes application metrics such as request counts and latency.
-
-- **gopkg.in/natefinch/lumberjack.v2**  
-  Handles log rotation and log file management.
-
-
-## Observability and Instrumentation
-
-The project uses OpenTelemetry for distributed tracing and metrics collection.
-
-- **go.opentelemetry.io/otel**  
-  Core OpenTelemetry API used for distributed tracing and observability.
-
-- **go.opentelemetry.io/otel/sdk**  
-  OpenTelemetry SDK implementation used to configure telemetry pipelines and exporters.
-
-- **go.opentelemetry.io/otel/trace**  
-  Tracing API for tracking request lifecycles across distributed gRPC calls.
-
-- **go.opentelemetry.io/otel/metric**  
-  Metrics API used for application-level instrumentation.
-
-## Supporting and Indirect Dependencies
-
-The following libraries are included indirectly as part of the dependency graph and are not
-used directly in the application code:
-
-- **github.com/prometheus/common**  
-  Shared utilities for Prometheus clients.
-
-- **github.com/prometheus/client_model**  
-  Prometheus data model definitions.
-
-- **github.com/prometheus/procfs**  
-  Access to process and system metrics.
-
-- **github.com/cespare/xxhash/v2**  
-  High-performance hashing functions.
-
-- **github.com/beorn7/perks**  
-  Performance optimizations used by Prometheus.
-
-- **golang.org/x/net**  
-  Extended networking utilities.
-
-- **golang.org/x/sys**  
-  Low-level operating system abstractions.
-
-- **golang.org/x/text**  
-  Text processing and encoding support.
-
-- **google.golang.org/genproto**  
-  Generated Protocol Buffer definitions for Google APIs.
-
-- **go.yaml.in/yaml/v2**  
-  YAML parsing library used for configuration handling.
-
-## Dependency Management
-
-All dependencies are managed using **Go Modules**.
-To download and verify all required packages, run:
+```md
+To regenerate this graph locally:
 
 ```bash
-go mod tidy
-go mod download
-```
----
+go mod graph
+
+## Test Scenarios
 
 ### Test 1 – Initial System Validation
 In Test 1, the Leader node is started, Member nodes join the cluster, and basic client operations are executed to verify correct communication and data flow.
