@@ -56,6 +56,9 @@ func main() {
 	//
 	// Initializes the global logging subsystem for the Member process.
 	// Logging includes structured output, rotation, and runtime-adjustable levels.
+	// All logs are prefixed with the "Member" role identifier.
+	// This must be done before any other operations to ensure
+	// that all components have access to logging facilities.
 
 	logger.Init()
 	logger.SetLevel(logger.INFO)
@@ -71,6 +74,12 @@ func main() {
 	//
 	//   - port : gRPC listening port (unique per Member)
 	//   - io   : disk I/O mode (buffered | unbuffered)
+	// These flags allow flexible deployment and testing.
+	// Defaults are provided for convenience.
+	// The port flag is critical to ensure no conflicts between
+	// multiple Member instances on the same host.
+	// The I/O mode flag allows experimentation with different
+	// disk persistence strategies.
 
 	port := flag.String("port", "5556", "gRPC port")
 	ioMode := flag.String("io", "buffered", "disk IO mode: buffered | unbuffered")
@@ -88,6 +97,12 @@ func main() {
 	//   - No cross-member disk interference
 	//   - Deterministic storage layout
 	//   - Easy debugging and cleanup
+	// The directory is created if it does not exist.
+	// Any failure to create the directory results in process termination.
+	// This is a critical step to ensure that the Member can persist data reliably.
+	// The directory follows the pattern:
+	//   internal/data/member-<port>/
+	// This convention simplifies management of multiple Member instances.
 
 	dataDir := filepath.Join("internal", "data", "member-"+*port)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
@@ -106,6 +121,7 @@ func main() {
 	// Note:
 	// This is intentionally minimal. Any cleanup policy (ephemeral storage, etc.)
 	// is handled explicitly by design decisions elsewhere.
+	// The focus here is on logging and orderly shutdown.
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
@@ -127,6 +143,12 @@ func main() {
 	//
 	// It is launched in a separate goroutine so that registration and heartbeat
 	// logic can proceed concurrently.
+	// This ensures the Member is operational as soon as possible.
+	// Any fatal errors during server startup result in process termination.
+	// This is critical to ensure availability and reliability.
+	// The server binds to the specified port and uses the designated data directory
+	// and I/O mode for disk operations.
+	// This setup is essential for the Member's role as a storage worker in the Tolerex system.
 
 	go startMemberGRPC(memberLog, *port, dataDir, *ioMode)
 
@@ -136,6 +158,16 @@ func main() {
 	//
 	// After startup, the Member explicitly registers itself with the Leader.
 	// A short delay ensures the gRPC server is fully listening before registration.
+	// Registration involves:
+	//   - Establishing a secure mTLS connection to the Leader
+	//   - Sending its network address
+	// Any failure to register results in process termination.
+	// This is critical to ensure the Member is recognized and can participate
+	// in the distributed storage system.
+	// Successful registration is logged for auditing and debugging purposes.
+	// This step is essential for the Member to become an active participant
+	// in the Tolerex distributed architecture.
+	// A brief sleep is used to allow the server to start before registration.
 
 	time.Sleep(500 * time.Millisecond)
 	registerToLeader(memberLog, leaderAddr, myAddr)

@@ -37,6 +37,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"os"
+	"tolerex/internal/logger"
 
 	"google.golang.org/grpc/credentials"
 )
@@ -68,6 +69,7 @@ func NewMTLSServerCreds(
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
+		logger.Error(logger.Member, "NewMTLSServerCreds: failed to load server cert/key err=%v", err)
 		return nil, err
 	}
 
@@ -80,6 +82,7 @@ func NewMTLSServerCreds(
 
 	caCert, err := os.ReadFile(caFile)
 	if err != nil {
+		logger.Error(logger.Member, "NewMTLSServerCreds: failed to read CA cert err=%v", err)
 		return nil, err
 	}
 
@@ -108,7 +111,7 @@ func NewMTLSServerCreds(
 		ClientCAs:    caPool,
 		MinVersion:   tls.VersionTLS13,
 	}
-
+	logger.Debug(logger.Member, "NewMTLSServerCreds: created server creds with mTLS enforcement")
 	return credentials.NewTLS(tlsConfig), nil
 }
 
@@ -139,6 +142,7 @@ func NewMTLSClientCreds(
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
+		logger.Error(logger.Member, "NewMTLSClientCreds: failed to load client cert/key err=%v", err)
 		return nil, err
 	}
 
@@ -151,6 +155,7 @@ func NewMTLSClientCreds(
 
 	caCert, err := os.ReadFile(caFile)
 	if err != nil {
+		logger.Error(logger.Member, "NewMTLSClientCreds: failed to read CA cert err=%v", err)
 		return nil, err
 	}
 
@@ -180,5 +185,6 @@ func NewMTLSClientCreds(
 		MinVersion:   tls.VersionTLS13,
 	}
 
+	logger.Debug(logger.Member, "NewMTLSClientCreds: created client creds for serverName=%s", serverName)
 	return credentials.NewTLS(tlsConfig), nil
 }

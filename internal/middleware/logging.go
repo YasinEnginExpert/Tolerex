@@ -61,6 +61,9 @@ import (
 // chain) to enrich logs with request-scoped identifiers.
 
 func LoggingInterceptor(baseLoggerName string) grpc.UnaryServerInterceptor {
+
+
+
 	return func(
 		ctx context.Context,
 		req interface{},

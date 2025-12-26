@@ -35,6 +35,7 @@
 </p>
 
 </div>
+
 ---
 
 ## Project Overview
@@ -52,9 +53,10 @@ Apache Kafka and RabbitMQ, and focuses on demonstrating:
 - Secure inter-node communication using gRPC and mTLS
 
 Client interaction is performed using a custom lightweight text-based protocol
-called HaToKuSe (Hata-Tolere Kuyruk Servisi).
+called **HaToKuSe (Hata-Tolere Kuyruk Servisi)**.
 
 ---
+
 
 ## Quick Start
 
@@ -64,6 +66,8 @@ called HaToKuSe (Hata-Tolere Kuyruk Servisi).
 - OpenSSL (for mTLS certificates)
 
 ### Clone Repository
+
+
 ```bash
 git clone https://github.com/YasinEnginExpert/Tolerex.git
 cd Tolerex

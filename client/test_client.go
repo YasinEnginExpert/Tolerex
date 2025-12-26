@@ -58,7 +58,7 @@ const (
 	DEFAULT_ADDR     = "localhost:6666"
 	DIAL_TIMEOUT     = 3 * time.Second
 	RETRY_DELAY      = 2 * time.Second
-	BULK_FLUSH_EVERY = 100
+	BULK_FLUSH_EVERY = 1000
 	RESULT_FILE      = "results/measured_values.json"
 )
 
@@ -138,7 +138,7 @@ func main() {
 	// Supports both interactive commands and bulk SET operations.
 
 	stdin := bufio.NewScanner(os.Stdin)
-	writer := bufio.NewWriter(conn)
+	writer := bufio.NewWriterSize(conn, 64*1024) // 64 KB buffer
 
 	for {
 		if !stdin.Scan() {
@@ -235,4 +235,6 @@ func main() {
 			return
 		}
 	}
+
 }
+

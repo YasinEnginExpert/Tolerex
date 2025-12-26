@@ -49,6 +49,10 @@ import (
 //
 // The interceptor is expected to be placed early in the interceptor chain
 // so that all subsequent layers can rely on the presence of a Request ID.
+// This enables consistent request tracing across the entire gRPC call lifecycle.
+// The generated Request ID is a UUID version 4, providing sufficient
+// randomness and uniqueness guarantees for distributed systems.
+// 
 
 func RequestIDInterceptor() grpc.UnaryServerInterceptor {
 	return func(
@@ -88,7 +92,7 @@ func RequestIDInterceptor() grpc.UnaryServerInterceptor {
 		//
 		// Control is passed to the next interceptor in the chain or to the
 		// actual gRPC method implementation if this is the last interceptor.
-
+		
 		return handler(ctx, req)
 	}
 }

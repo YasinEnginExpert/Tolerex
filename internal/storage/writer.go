@@ -37,6 +37,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"tolerex/internal/logger"
 )
 
 // --- WRITE MESSAGE ---
@@ -55,13 +56,16 @@ func WriteMessage(baseDir string, id int, text string, mode string) error {
 	// Ensure messages directory exists
 	dir := filepath.Join(baseDir, "messages")
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		logger.Error(logger.Member, "WriteMessage: failed to create messages dir path=%s err=%v", dir, err)
 		return err
 	}
 
 	switch mode {
 	case "unbuffered":
+		logger.Debug(logger.Member, "WriteMessage: writing unbuffered msg_id=%d", id)
 		return writeUnbuffered(dir, id, text)
 	default:
+		logger.Debug(logger.Member, "WriteMessage: writing buffered msg_id=%d", id)
 		return writeBuffered(dir, id, text)
 	}
 }
@@ -71,12 +75,14 @@ func writeBuffered(dir string, id int, text string) error {
 
 	f, err := os.Create(filename)
 	if err != nil {
+		logger.Error(logger.Member, "writeBuffered: failed to create file id=%d path=%s err=%v", id, filename, err)
 		return err
 	}
 	defer f.Close()
 
 	w := bufio.NewWriter(f)
 	if _, err := w.WriteString(text); err != nil {
+		logger.Error(logger.Member, "writeBuffered: failed to write file id=%d path=%s err=%v", id, filename, err)
 		return err
 	}
 	return w.Flush()
@@ -84,5 +90,6 @@ func writeBuffered(dir string, id int, text string) error {
 
 func writeUnbuffered(dir string, id int, text string) error {
 	filename := filepath.Join(dir, strconv.Itoa(id)+".msg")
+	logger.Debug(logger.Member, "writeUnbuffered: writing file id=%d path=%s", id, filename)
 	return os.WriteFile(filename, []byte(text), 0644)
 }

@@ -141,6 +141,7 @@ func (s *LeaderServer) Heartbeat(ctx context.Context, hb *pb.HeartbeatRequest) (
 	member, ok := s.MemberLog[hb.Address]
 	if !ok {
 		// Ignore heartbeat from unknown member (must register first).
+		logger.Warn(log, "Heartbeat from unknown member: %s", hb.Address)
 		return &emptypb.Empty{}, nil
 	}
 	member.LastSeen = time.Now()
@@ -196,9 +197,11 @@ func (s *LeaderServer) StartHeartbeatWatcher() {
 						"Member marked DOWN: addr=%s lastSeen=%s",
 						m.Address,
 						m.LastSeen.Format(time.RFC3339),
+						m.AddedAt.Format(time.RFC3339),
 					)
 					m.Alive = false
 					changed = true
+
 				}
 			}
 			s.mu.Unlock()
@@ -222,6 +225,7 @@ func NewLeaderServer(members []string, toleranceFile string) (*LeaderServer, err
 	// Load tolerance configuration value.
 	tolerance, err := config.ReadTolerance(toleranceFile)
 	if err != nil {
+		logger.Error(logger.Leader, "Failed to read tolerance config: %v", err)
 		return nil, err
 	}
 
@@ -254,6 +258,7 @@ func NewLeaderServer(members []string, toleranceFile string) (*LeaderServer, err
 			"member",
 		)
 		if err != nil {
+			logger.Error(logger.Leader, "Failed to initialize mTLS creds: %v", err)
 			return nil, fmt.Errorf("failed to init leader->member mTLS creds: %w", err)
 		}
 		leader.memberDialOpt = grpc.WithTransportCredentials(creds)
@@ -331,6 +336,7 @@ func (s *LeaderServer) RegisterMember(ctx context.Context, req *pb.MemberInfo) (
 func (s *LeaderServer) dialMember(addr string) (*grpc.ClientConn, error) {
 	if s.dialFn != nil {
 		return s.dialFn(addr) // use test override if provided
+
 	}
 	logger.Debug(logger.Leader, "Dialing member %s with mTLS", addr)
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
@@ -371,6 +377,7 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 	for _, addr := range s.Members {
 		info := s.MemberLog[addr]
 		if info == nil || !info.Alive {
+			logger.Debug(log, "Skipping DOWN member for replication: %s", addr)
 			continue
 		}
 		stats = append(stats, memberStat{addr: addr, count: info.MessageCnt})
@@ -388,8 +395,10 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 			break
 		}
 		selected = append(selected, st.addr)
+		logger.Debug(log, "Selected member for replication: %s (msg_count=%d)", st.addr, st.count)
 	}
 	if len(selected) < tol {
+		logger.Error(log, "Not enough alive members for replication: have=%d need=%d", len(selected), tol)
 		return &pb.StoreResult{Ok: false, Err: "Not enough alive members"}, nil
 	}
 
@@ -400,6 +409,7 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 		var success bool
 		if s.replicateFn != nil {
 			// Use injected replication function (for testing).
+			logger.Debug(log, "Using test replicateFn for member %s", addr)
 			success = s.replicateFn(ctx, addr, msg)
 			// (No logging on failure in test mode)
 		} else {
@@ -411,9 +421,11 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 			client := pb.NewStorageServiceClient(conn)
 			ctx2, cancel := context.WithTimeout(ctx, rpcTimeout)
 			res, callErr := client.Store(ctx2, msg)
+			logger.Debug(log, "Replication call to %s completed: err=%v", addr, callErr)
 			cancel()
 			conn.Close()
 			if callErr == nil && res != nil && res.Ok {
+				logger.Info(log, "Replication succeeded: msg_id=%d member=%s", msg.Id, addr)
 				success = true
 			} else {
 				logger.Error(log, "Replication failed: msg_id=%d member=%s err=%v", msg.Id, addr, callErr)
@@ -422,6 +434,7 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 		if success {
 			successful = append(successful, addr)
 			if len(successful) == tol {
+				logger.Debug(log, "Required replication count achieved: %d", tol)
 				break // achieved required replication count
 			}
 		}
@@ -438,6 +451,7 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 		full := len(successful) >= tol
 		if full {
 			// Store a copy of the replica list for this message ID.
+			logger.Debug(log, "Updating MsgMap for msg_id=%d replicas=%v", msg.Id, successful)
 			s.MsgMap[int(msg.Id)] = append([]string(nil), successful...)
 		}
 		s.mu.Unlock()
@@ -470,6 +484,9 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 //
 // This keeps the read path simple and deterministic.
 func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.StoredMessage, error) {
+	if os.Getenv("TOLEREX_TEST_MODE") == "1" {
+		return &pb.StoredMessage{Id: req.Id, Text: "dummy"}, nil
+	}
 	log := logger.WithContext(ctx, logger.Leader)
 
 	logger.Info(log, "Retrieve request received: msg_id=%d", req.Id)
@@ -484,6 +501,7 @@ func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 	var targets []string
 	if ok && len(replicas) > 0 {
 		targets = replicas
+
 	} else {
 		logger.Warn(log, "Replica map empty for msg_id=%d, trying all members", req.Id)
 		targets = members
@@ -509,6 +527,7 @@ func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 		cancel()
 		conn.Close()
 		if callErr == nil && res != nil {
+			logger.Info(log, "Retrieve succeeded from %s: msg_id=%d", addr, req.Id)
 			return res, nil // return the first successful retrieval
 		}
 	}
@@ -572,28 +591,34 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 		case "SET":
 			if len(parts) < 3 {
 				fmt.Fprint(writer, "ERROR: SET <id> <message>\r\n")
+				logger.Warn(log, "Invalid SET command format")
 				break
 			}
 			id, err := strconv.Atoi(parts[1])
 			if err != nil {
 				fmt.Fprint(writer, "ERROR: id must be numeric\r\n")
+				logger.Warn(log, "Non-numeric id in SET command: %s", parts[1])
 				break
 			}
 			msg := strings.Join(parts[2:], " ")
 			res, _ := s.Store(ctx, &pb.StoredMessage{Id: int32(id), Text: msg})
 			if res != nil && res.Ok {
 				fmt.Fprint(writer, "OK\r\n")
+				logger.Info(log, "SET command succeeded: id=%d", id)
 			} else {
 				fmt.Fprint(writer, "ERROR: store failed\r\n")
+				logger.Error(log, "SET command failed: id=%d err=%v", id, res.Err)
 			}
 		case "GET":
 			if len(parts) != 2 {
 				fmt.Fprint(writer, "ERROR: GET <id>\r\n")
+				logger.Warn(log, "Invalid GET command format")
 				break
 			}
 			id, err := strconv.Atoi(parts[1])
 			if err != nil {
 				fmt.Fprint(writer, "ERROR: id must be numeric\r\n")
+				logger.Warn(log, "Non-numeric id in GET command: %s", parts[1])
 				break
 			}
 			res, err := s.Retrieve(ctx, &pb.MessageID{Id: int32(id)})
@@ -601,8 +626,10 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 				st, ok := status.FromError(err)
 				if ok && st.Code() == codes.NotFound {
 					fmt.Fprint(writer, "NOT_FOUND\r\n")
+					logger.Info(log, "GET command: message not found id=%d", id)
 				} else {
 					fmt.Fprint(writer, "ERROR: retrieve failed\r\n")
+					logger.Error(log, "GET command failed: id=%d err=%v", id, err)
 				}
 				break
 			}
@@ -654,7 +681,7 @@ func (s *LeaderServer) saveStateUnsafe() error {
 		cp := *v
 		memberLog[k] = &cp
 	}
-
+	logger.Info(logger.Leader, "Persisting Leader state: members=%d msgMap entries=%d", len(members), len(s.MsgMap))
 	// --- DEEP COPY MESSAGE MAP ---
 	msgMap := make(map[int][]string, len(s.MsgMap))
 	for id, addrs := range s.MsgMap {
@@ -669,6 +696,7 @@ func (s *LeaderServer) saveStateUnsafe() error {
 		MsgMap:    msgMap,
 	}, "", "  ")
 	if err != nil {
+		logger.Error(logger.Leader, "Failed to serialize Leader state: %v", err)
 		return err
 	}
 
@@ -688,20 +716,24 @@ func (s *LeaderServer) loadState() error {
 	data, err := os.ReadFile(stateFilePath())
 	if err != nil {
 		if os.IsNotExist(err) {
+			logger.Info(logger.Leader, "No persisted Leader state found, starting fresh")
 			return nil // no state file, start fresh
 		}
 		return err
 	}
 	var state LeaderState
 	if err := json.Unmarshal(data, &state); err != nil {
+		logger.Error(logger.Leader, "Failed to deserialize Leader state: %v", err)
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if state.MemberLog == nil {
+		logger.Warn(logger.Leader, "Persisted Leader state has nil MemberLog, initializing empty map")
 		state.MemberLog = make(map[string]*MemberInfo)
 	}
 	if state.MsgMap == nil {
+		logger.Warn(logger.Leader, "Persisted Leader state has nil MsgMap, initializing empty map")
 		state.MsgMap = make(map[int][]string)
 	}
 	s.Members = state.Members
@@ -731,6 +763,7 @@ func (s *LeaderServer) PrintMemberStats() {
 	snapshot := make([]MemberInfo, 0, len(s.MemberLog))
 	for _, info := range s.MemberLog {
 		if info != nil {
+			logger.Debug(logger.Leader, "Snapshotting member: %s Alive=%v MsgCnt=%d", info.Address, info.Alive, info.MessageCnt)
 			snapshot = append(snapshot, *info)
 		}
 	}

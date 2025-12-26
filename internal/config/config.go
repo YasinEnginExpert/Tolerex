@@ -41,6 +41,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"tolerex/internal/logger"
 )
 
 // ===================================================================================
@@ -74,6 +75,7 @@ func ReadTolerance(path string) (int, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
+		logger.Error(logger.Member, "ReadTolerance: failed to read file path=%s err=%v", path, err)
 		return 0, err
 	}
 
@@ -89,6 +91,7 @@ func ReadTolerance(path string) (int, error) {
 	// This prevents malformed inputs with multiple '=' characters.
 	parts := strings.SplitN(line, "=", 2)
 	if len(parts) != 2 {
+		logger.Error(logger.Member, "ReadTolerance: invalid format line=%s", line)
 		return 0, fmt.Errorf(
 			"invalid tolerance.conf format, expected TOLERANCE=<positive integer>",
 		)
@@ -105,6 +108,7 @@ func ReadTolerance(path string) (int, error) {
 	// No aliases or lowercase variants are accepted by design.
 
 	if key != "TOLERANCE" {
+		logger.Error(logger.Member, "ReadTolerance: invalid key=%s", key)
 		return 0, fmt.Errorf(
 			"invalid tolerance.conf format, expected TOLERANCE=<positive integer>",
 		)
@@ -116,6 +120,7 @@ func ReadTolerance(path string) (int, error) {
 
 	tol, err := strconv.Atoi(val)
 	if err != nil {
+		logger.Error(logger.Member, "ReadTolerance: failed to parse tolerance value err=%v", err)
 		return 0, fmt.Errorf("tolerance must be a valid integer")
 	}
 
@@ -127,6 +132,7 @@ func ReadTolerance(path string) (int, error) {
 	// Enforcing this here prevents undefined behavior later in the system.
 
 	if tol <= 0 {
+		logger.Error(logger.Member, "ReadTolerance: invalid tolerance value=%d", tol)
 		return 0, fmt.Errorf("tolerance must be greater than 0")
 	}
 

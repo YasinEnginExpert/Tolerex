@@ -70,13 +70,18 @@ var (
 type Level int
 
 const (
-	DEBUG Level = iota
-	INFO
-	WARN
-	ERROR
-	FATAL
+	DEBUG Level = iota // 0
+	INFO               // 1
+	WARN               // 2
+	ERROR              // 3
+	FATAL              // 4
 )
-
+// ===================================================================================
+// LOG LEVEL MANAGEMENT
+// ===================================================================================
+//
+// The current log level can be adjusted at runtime
+// to control verbosity without restarting the process.
 // currentLevel defines the global minimum log level.
 // Default is INFO.
 var currentLevel = INFO
@@ -126,11 +131,12 @@ func Init() {
 	_ = os.MkdirAll(baseDir, 0755)
 
 	writer := &lumberjack.Logger{
-		Filename:   filepath.Join(baseDir, "tolerex.log"),
-		MaxSize:    5,
-		MaxBackups: 7,
-		MaxAge:     7,
-		Compress:   true,
+		Filename:   filepath.Join(baseDir, "tolerex.log"), // log file path
+		MaxSize:    5, // MB
+		MaxBackups: 7, // files
+		MaxAge:     7, // days
+		Compress:   true, // enabled
+		
 	}
 
 	// Include timestamps and source location for debugging

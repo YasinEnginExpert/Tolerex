@@ -42,11 +42,13 @@ const expectedLeaderCN = "leader"
 func callerFromContext(ctx context.Context) string {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
+		logger.Error(logger.Member, "Failed to extract peer info from context")
 		return "unknown"
 	}
 
 	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
 	if !ok || len(tlsInfo.State.PeerCertificates) == 0 {
+		logger.Error(logger.Member, "Failed to extract TLS info or peer certificates")
 		return "unknown"
 	}
 
@@ -59,21 +61,25 @@ func callerFromContext(ctx context.Context) string {
 func authorizeLeader(ctx context.Context) error {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
+		logger.Error(logger.Member, "Failed to extract peer info from context")
 		return status.Error(codes.Unauthenticated, "missing peer info")
 	}
 
 	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
 	if !ok {
+		logger.Error(logger.Member, "Failed to extract TLS info from peer")
 		return status.Error(codes.Unauthenticated, "missing TLS auth info")
 	}
 
 	// VerifiedChains means TLS verified certificate chain against server's trusted CA.
 	if len(tlsInfo.State.VerifiedChains) == 0 || len(tlsInfo.State.VerifiedChains[0]) == 0 {
+		logger.Error(logger.Member, "No verified certificate chains found in TLS info")
 		return status.Error(codes.Unauthenticated, "could not verify peer certificate")
 	}
 
 	leaf := tlsInfo.State.VerifiedChains[0][0]
 	if leaf.Subject.CommonName != expectedLeaderCN {
+		logger.Warn(logger.Member, "Unauthorized caller CN=%s", leaf.Subject.CommonName)
 		return status.Error(codes.PermissionDenied, "unauthorized caller")
 	}
 
@@ -86,8 +92,10 @@ func ctxCancelled(ctx context.Context) error {
 	case <-ctx.Done():
 		// Preserve gRPC semantics: canceled or deadline exceeded.
 		if ctx.Err() == context.DeadlineExceeded {
+			logger.Warn(logger.Member, "Request deadline exceeded")
 			return status.Error(codes.DeadlineExceeded, "request deadline exceeded")
 		}
+		logger.Warn(logger.Member, "Request cancelled")
 		return status.Error(codes.Canceled, "request cancelled")
 	default:
 		return nil
@@ -111,11 +119,13 @@ type MemberServer struct {
 func (s *MemberServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.StoreResult, error) {
 
 	if err := authorizeLeader(ctx); err != nil {
+		logger.Warn(logger.Member, "unauthorized Store attempt")
 		return nil, err
 	}
 
 	select {
 	case <-ctx.Done():
+		logger.Warn(logger.Member, "Store request cancelled before write msg_id=%d", msg.Id)
 		return nil, status.Error(codes.Canceled, "request cancelled")
 	default:
 	}
@@ -125,17 +135,20 @@ func (s *MemberServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 
 	select {
 	case <-ctx.Done():
+		logger.Warn(log, "store cancelled before write msg_id=%d", msg.Id)
 		return nil, status.Error(codes.Canceled, "cancelled before write")
 	default:
 	}
 
 	err := storage.WriteMessage(s.DataDir, int(msg.Id), msg.Text, s.IOMode)
 	if err != nil {
+		logger.Error(log, "store failed msg_id=%d err=%v", msg.Id, err)
 		return &pb.StoreResult{Ok: false, Err: err.Error()}, nil
 	}
 
 	select {
 	case <-ctx.Done():
+		logger.Warn(log, "store cancelled after write msg_id=%d", msg.Id)
 		return nil, status.Error(codes.Canceled, "cancelled after write")
 	default:
 	}
@@ -157,6 +170,7 @@ func (s *MemberServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 
 	// (3) Cancellation-aware
 	if err := ctxCancelled(ctx); err != nil {
+		logger.Warn(logger.Member, "retrieve cancelled before disk read msg_id=%d", req.Id)
 		return nil, err
 	}
 
@@ -170,6 +184,7 @@ func (s *MemberServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 		"retrieve begin caller=%s msg_id=%d",
 		caller,
 		req.Id,
+		
 	)
 
 	// (3) Cancellation-aware before disk I/O

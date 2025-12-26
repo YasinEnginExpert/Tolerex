@@ -36,6 +36,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"tolerex/internal/logger"
 )
 
 // --- READ MESSAGE ---
@@ -66,10 +67,12 @@ func ReadMessage(baseDir string, id int) (string, error) {
 		// --- NOT FOUND TRANSLATION ---
 		// Explicitly maps os.ErrNotExist to a domain-level NOT_FOUND error.
 		if os.IsNotExist(err) {
+			logger.Debug(logger.Member, "ReadMessage: file not found id=%d path=%s", id, filename)
 			return "", errors.New("NOT_FOUND")
 		}
 
 		// --- PROPAGATE OTHER ERRORS ---
+		logger.Error(logger.Member, "ReadMessage: read error id=%d path=%s err=%v", id, filename, err)
 		return "", err
 	}
 

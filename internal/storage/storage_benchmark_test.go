@@ -51,7 +51,7 @@ func BenchmarkStorage_BufferedWrite(b *testing.B) {
 	}
 	defer f.Close()
 
-	writer := bufio.NewWriterSize(f, 4*1024)
+	writer := bufio.NewWriterSize(f, 4*1024) // 4 KB buffer
 
 	b.ResetTimer()
 
@@ -71,4 +71,5 @@ func BenchmarkStorage_BufferedWrite(b *testing.B) {
 	if err := writer.Flush(); err != nil {
 		b.Fatal(err)
 	}
+
 }
