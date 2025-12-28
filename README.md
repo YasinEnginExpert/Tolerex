@@ -35,7 +35,6 @@
 </p>
 
 </div>
----
 
 ## Project Overview
 
@@ -353,6 +352,7 @@ In Test 7, crash scenarios are simulated by manually stopping Member nodes. Duri
   - Documentation improvement
 
   - Conceptual explanations of distributed systems and Go internals
+
 
 
 
