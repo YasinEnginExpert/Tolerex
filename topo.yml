@@ -1,0 +1,27 @@
+name: tolerex
+
+topology:
+  nodes:
+    leader:
+      kind: linux
+      image: tolerex
+      exec:
+        - ./leader
+
+    member1:
+      kind: linux
+      image: tolerex
+      exec:
+        - ./member -port=5556
+
+    member2:
+      kind: linux
+      image: tolerex
+      exec:
+        - ./member -port=5557
+
+    member3:
+      kind: linux
+      image: tolerex
+      exec:
+        - ./member -port=5558
