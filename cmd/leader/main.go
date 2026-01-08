@@ -35,6 +35,7 @@ package main
 import (
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -49,6 +50,13 @@ import (
 	"google.golang.org/grpc"
 )
 
+func getenv(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 // ===================================================================================
 // NETWORK CONFIGURATION
 // ===================================================================================
@@ -56,12 +64,6 @@ import (
 // Ports are intentionally fixed for local development clarity.
 // In production, these would typically be configurable via environment variables
 // or a configuration system.
-
-const (
-	grpcPort    = ":5555" // Secure Leader ↔ Member gRPC endpoint (mTLS)
-	tcpPort     = ":6666" // Local-only TCP control plane (operator interface)
-	metricsPort = ":9090" // Prometheus metrics endpoint
-)
 
 // ===================================================================================
 // MAIN
@@ -86,6 +88,14 @@ func main() {
 	log := logger.Leader
 	logger.Info(log, "Leader process starting")
 
+	grpcPort := getenv("LEADER_GRPC_PORT", "5555")
+	tcpPort := getenv("LEADER_TCP_PORT", "6666")
+	metricsPort := getenv("LEADER_METRICS_PORT", "9090")
+
+	grpcAddr := ":" + grpcPort
+	tcpAddr := "127.0.0.1:" + tcpPort
+	metricsAddr := ":" + metricsPort
+
 	// -------------------------------------------------------------------------------
 	// CONFIGURATION LOADING
 	// -------------------------------------------------------------------------------
@@ -93,7 +103,7 @@ func main() {
 	// tolerance.conf defines the replication tolerance factor (N-fault tolerance).
 	// The initial member list is intentionally empty; members self-register dynamically.
 
-	confPath := filepath.Join("config", "tolerance.conf")
+	confPath := getenv("TOLERANCE_CONF", filepath.Join("config", "tolerance.conf"))
 	initialMembers := []string{}
 
 	// -------------------------------------------------------------------------------
@@ -137,7 +147,7 @@ func main() {
 	// logging, recovery, request IDs, and metrics.
 
 	go func() {
-		lis, err := net.Listen("tcp", grpcPort)
+		lis, err := net.Listen("tcp", grpcAddr)
 		if err != nil {
 			logger.Fatal(log, "Failed to listen on gRPC port %s: %v", grpcPort, err)
 		}
@@ -189,7 +199,7 @@ func main() {
 	// It is intentionally isolated from external networks.
 
 	go func() {
-		listener, err := net.Listen("tcp", "127.0.0.1"+tcpPort)
+		listener, err := net.Listen("tcp", tcpAddr)
 		if err != nil {
 			logger.Fatal(log, "Failed to listen on TCP port %s: %v", tcpPort, err)
 		}
@@ -224,7 +234,7 @@ func main() {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
 
-		if err := http.ListenAndServe(metricsPort, mux); err != nil {
+		if err := http.ListenAndServe(metricsAddr, mux); err != nil {
 			logger.Warn(log, "Metrics server stopped: %v", err)
 		}
 	}()

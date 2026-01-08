@@ -23,6 +23,13 @@ import (
 	"google.golang.org/grpc"
 )
 
+func getenv(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 // ===================================================================================
 // TOLEREX – MEMBER NODE BOOTSTRAP
 // ===================================================================================
@@ -84,13 +91,31 @@ func main() {
 	// The I/O mode flag allows experimentation with different
 	// disk persistence strategies.
 
-	port := flag.String("port", "5556", "gRPC port")
-	ioMode := flag.String("io", "buffered", "disk IO mode: buffered | unbuffered")
-	metricsPort := flag.String("metrics", "9092", "Prometheus metrics port")
+	port := flag.String(
+		"port",
+		getenv("MEMBER_GRPC_PORT", "5556"),
+		"gRPC port",
+	)
+
+	ioMode := flag.String(
+		"io",
+		getenv("MEMBER_IO_MODE", "buffered"),
+		"disk IO mode: buffered | unbuffered",
+	)
+
+	metricsPort := flag.String(
+		"metrics",
+		getenv("MEMBER_METRICS_PORT", "9092"),
+		"Prometheus metrics port",
+	)
+
 	flag.Parse()
 
-	leaderAddr := "localhost:5555"
-	myAddr := "localhost:" + *port
+	leaderAddr := getenv("LEADER_ADDR", "leader:5555")
+	myAddr := os.Getenv("MEMBER_ADDR")
+	if myAddr == "" {
+		myAddr = "localhost:" + *port
+	}
 
 	// -------------------------------------------------------------------------------
 	// PROMETHEUS METRICS INITIALIZATION
@@ -134,7 +159,7 @@ func main() {
 
 	dataDir := filepath.Join("internal", "data", "member-"+*port)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		logger.Warn(memberLog, "Metrics HTTP server failed: %v", err)
+		logger.Fatal(memberLog, "Data directory could not be created: %v", err)
 	}
 
 	// -------------------------------------------------------------------------------
@@ -298,17 +323,21 @@ func registerToLeader(memberLog *log.Logger, leaderAddr, myAddr string) {
 	}
 
 	// Connect to Leader
-	conn, err := grpc.Dial(leaderAddr, grpc.WithTransportCredentials(creds))
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+
+	conn, err := grpc.DialContext(
+		ctx,
+		leaderAddr,
+		grpc.WithTransportCredentials(creds),
+		grpc.WithBlock(),
+	)
 	if err != nil {
 		logger.Fatal(memberLog, "Failed to connect to leader: %v", err)
 	}
 	defer conn.Close()
 
 	client := proto.NewStorageServiceClient(conn)
-
-	// Perform registration with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
 
 	_, err = client.RegisterMember(ctx, &proto.MemberInfo{Address: myAddr})
 	if err != nil {
@@ -339,7 +368,15 @@ func startHeartbeat(memberLog *log.Logger, leaderAddr, myAddr string) {
 
 	go func() {
 		for {
-			conn, err := grpc.Dial(leaderAddr, grpc.WithTransportCredentials(creds))
+			dialCtx, dialCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			conn, err := grpc.DialContext(
+				dialCtx,
+				leaderAddr,
+				grpc.WithTransportCredentials(creds),
+				grpc.WithBlock(),
+			)
+			dialCancel()
+
 			if err != nil {
 				logger.Warn(memberLog, "Leader unreachable: %v", err)
 				time.Sleep(5 * time.Second)
@@ -348,9 +385,9 @@ func startHeartbeat(memberLog *log.Logger, leaderAddr, myAddr string) {
 
 			client := proto.NewStorageServiceClient(conn)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			_, err = client.Heartbeat(ctx, &proto.HeartbeatRequest{Address: myAddr})
-			cancel()
+			hbCtx, hbCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_, err = client.Heartbeat(hbCtx, &proto.HeartbeatRequest{Address: myAddr})
+			hbCancel()
 			conn.Close()
 
 			if err != nil {
