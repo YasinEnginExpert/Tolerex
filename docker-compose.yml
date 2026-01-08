@@ -1,0 +1,99 @@
+version: "3.9"
+
+services:
+  # ==========================================================
+  # LEADER
+  # ==========================================================
+  leader:
+    image: tolerex
+    build: .
+    container_name: tolerex-leader
+    hostname: leader
+    command: ./leader
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    ports:
+      - "5555:5555"
+      - "9090:9090"
+    networks:
+      - tolerex-net
+
+  # ==========================================================
+  # MEMBER 1
+  # ==========================================================
+  member1:
+    image: tolerex
+    container_name: tolerex-member1
+    hostname: member1
+    command: ./member -port=5556 -metrics=9092
+    environment:
+      LEADER_ADDR: leader:5555
+    depends_on:
+      - leader
+    volumes:
+      - ./config:/app/config
+    ports:
+      - "9092:9092"
+    networks:
+      - tolerex-net
+
+  # ==========================================================
+  # MEMBER 2
+  # ==========================================================
+  member2:
+    image: tolerex
+    container_name: tolerex-member2
+    hostname: member2
+    command: ./member -port=5557 -metrics=9093
+    environment:
+      LEADER_ADDR: leader:5555
+    depends_on:
+      - leader
+    volumes:
+      - ./config:/app/config
+    ports:
+      - "9093:9093"
+    networks:
+      - tolerex-net
+
+  # ==========================================================
+  # MEMBER 3
+  # ==========================================================
+  member3:
+    image: tolerex
+    container_name: tolerex-member3
+    hostname: member3
+    command: ./member -port=5558 -metrics=9094
+    environment:
+      LEADER_ADDR: leader:5555
+    depends_on:
+      - leader
+    volumes:
+      - ./config:/app/config
+    ports:
+      - "9094:9094"
+    networks:
+      - tolerex-net
+
+  # ==========================================================
+  # PROMETHEUS
+  # ==========================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tolerex-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9091:9090"
+    depends_on:
+      - leader
+      - member1
+      - member2
+      - member3
+    networks:
+      - tolerex-net
+
+networks:
+  tolerex-net:
+    driver: bridge

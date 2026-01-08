@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -12,11 +13,13 @@ import (
 	"time"
 
 	"tolerex/internal/logger"
+	"tolerex/internal/metrics"
 	"tolerex/internal/middleware"
 	"tolerex/internal/security"
 	"tolerex/internal/server"
 	proto "tolerex/proto/gen"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 )
 
@@ -83,10 +86,35 @@ func main() {
 
 	port := flag.String("port", "5556", "gRPC port")
 	ioMode := flag.String("io", "buffered", "disk IO mode: buffered | unbuffered")
+	metricsPort := flag.String("metrics", "9092", "Prometheus metrics port")
 	flag.Parse()
 
 	leaderAddr := "localhost:5555"
 	myAddr := "localhost:" + *port
+
+	// -------------------------------------------------------------------------------
+	// PROMETHEUS METRICS INITIALIZATION
+	// -------------------------------------------------------------------------------
+	//
+	// Registers all Prometheus metric collectors and exposes
+	// an HTTP /metrics endpoint for scraping.
+	//
+	// This HTTP server is intentionally decoupled from gRPC
+	// and runs on a dedicated port.
+
+	metrics.Init()
+
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+
+		addr := ":" + *metricsPort
+		logger.Info(memberLog, "Metrics endpoint listening on %s", addr)
+
+		if err := http.ListenAndServe(addr, mux); err != nil {
+			logger.Warn(memberLog, "Metrics server stopped: %v", err)
+		}
+	}()
 
 	// -------------------------------------------------------------------------------
 	// DATA DIRECTORY INITIALIZATION
@@ -106,7 +134,7 @@ func main() {
 
 	dataDir := filepath.Join("internal", "data", "member-"+*port)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		logger.Fatal(memberLog, "Data directory could not be created: %v", err)
+		logger.Warn(memberLog, "Metrics HTTP server failed: %v", err)
 	}
 
 	// -------------------------------------------------------------------------------

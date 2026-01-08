@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+
+  # ==========================================================
+  # LEADER METRICS
+  # ==========================================================
+  - job_name: "tolerex-leader"
+    static_configs:
+      - targets:
+          - "localhost:9090"
+        labels:
+          role: "leader"
+
+  # ==========================================================
+  # MEMBER METRICS
+  # ==========================================================
+  - job_name: "tolerex-members"
+    static_configs:
+      - targets:
+          - "localhost:9092"
+          - "localhost:9093"
+          - "localhost:9094"
+        labels:
+          role: "member"

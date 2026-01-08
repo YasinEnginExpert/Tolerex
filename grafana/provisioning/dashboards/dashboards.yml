@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: 'tolerex'
+    orgId: 1
+    folder: 'Tolerex'
+    type: file
+    options:
+      path: /etc/grafana/dashboards

@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"tolerex/internal/logger"
+	"tolerex/internal/metrics"
 	"tolerex/internal/middleware"
 	"tolerex/internal/security"
 	"tolerex/internal/server"
@@ -216,6 +217,7 @@ func main() {
 	//
 	// This endpoint is intentionally lightweight and read-only.
 
+	metrics.Init()
 	go func() {
 		logger.Info(log, "Metrics endpoint listening on %s", metricsPort)
 
