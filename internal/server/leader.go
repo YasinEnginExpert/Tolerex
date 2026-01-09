@@ -35,6 +35,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -341,7 +342,13 @@ func (s *LeaderServer) dialMember(addr string) (*grpc.ClientConn, error) {
 	logger.Debug(logger.Leader, "Dialing member %s with mTLS", addr)
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
-	return grpc.DialContext(ctx, addr, s.memberDialOpt, grpc.WithBlock())
+	return grpc.DialContext(
+		ctx,
+		addr,
+		s.memberDialOpt,
+		grpc.WithBlock(),
+		grpc.WithDefaultCallOptions(),
+	)
 }
 
 // ===================================================================================
@@ -368,7 +375,15 @@ func (s *LeaderServer) dialMember(addr string) (*grpc.ClientConn, error) {
 func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.StoreResult, error) {
 	log := logger.WithContext(ctx, logger.Leader)
 
-	logger.Info(log, "Store request received: msg_id=%d tolerance=%d", msg.Id, s.Tolerance)
+	logger.Info(log,
+		"Store request received: msg_id=%d payload_bytes=%d tolerance=%d",
+		msg.Id,
+		len(msg.Text),
+		s.Tolerance,
+	)
+	if len(msg.Text) > 1_000_000 {
+		logger.Warn(log, "Large payload detected: %d bytes", len(msg.Text))
+	}
 
 	var stats []memberStat
 
@@ -548,26 +563,34 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 	log := logger.WithContext(ctx, logger.Leader)
 	logger.Info(log, "TCP client connected: %s", conn.RemoteAddr())
 
-	reader := bufio.NewScanner(conn)
+	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
 
 	// Command reference banner.
 	banner := []string{
-		"---------------------------------------",
-		"TOLEREX - Leader Node",
-		"---------------------------------------",
+		"--------------------------------------------------",
+		"TOLEREX - Leader Node (Control Plane)",
+		"--------------------------------------------------",
 		"",
-		"Commands:",
-		"  SET <id> <message>",
-		"  <N> SET <message>",
-		"  GET <id>",
-		"  HELP",
-		"  QUIT | EXIT",
+		"Basic Commands:",
+		"  SET <id> <message>        Store a message",
+		"  <N> SET <message>         Bulk store N messages",
+		"  GET <id>                  Retrieve a message",
+		"",
+		"File / Benchmark Commands:",
+		"  SET <id> @<file>          Store entire file as one payload",
+		"                            (supports large multi-MB files)",
+		"",
+		"Utility:",
+		"  HELP                      Show this help",
+		"  QUIT | EXIT               Disconnect client",
 		"",
 		"Examples:",
 		"  SET 10 HELLO",
 		"  1000 SET HELLO",
-		"---------------------------------------",
+		"  SET 42 @client/test/benchmark/stress_10k.txt",
+		"",
+		"--------------------------------------------------",
 	}
 	for _, line := range banner {
 		fmt.Fprint(writer, line+"\r\n")
@@ -576,17 +599,27 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 	writer.Flush()
 
 	// Command loop.
-	for reader.Scan() {
-		line := strings.TrimSpace(reader.Text())
-		logger.Debug(log, "TCP command received: %s", line)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err != io.EOF {
+				logger.Warn(log, "TCP client error: %v", err)
+			}
+			return
+		}
+
+		line = strings.TrimSpace(line)
+
 		if line == "" {
 			fmt.Fprint(writer, "tolerex> ")
 			writer.Flush()
 			continue
 		}
+
+		logger.Debug(log, "TCP command received: %s", line)
+
 		parts := strings.Fields(line)
 		cmd := strings.ToUpper(parts[0])
-
 		switch cmd {
 		case "SET":
 			if len(parts) < 3 {
@@ -649,9 +682,7 @@ func (s *LeaderServer) HandleClient(conn net.Conn) {
 		fmt.Fprint(writer, "tolerex> ")
 		writer.Flush()
 	}
-	if err := reader.Err(); err != nil {
-		logger.Warn(log, "TCP client error: %v", err)
-	}
+
 }
 
 // ===================================================================================

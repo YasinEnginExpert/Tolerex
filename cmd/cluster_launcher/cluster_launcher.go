@@ -89,12 +89,19 @@ func main() {
 
 	fmt.Println("=== TOLEREX LOCAL CLUSTER LAUNCHER ===")
 
+	clientCount := askInt("Number of CLIENTS: ")
 	memberCount := askInt("Number of MEMBERS: ")
 	ioMode := askChoice(
 		"IO mode [buffered | unbuffered]: ",
 		"buffered",
 		"unbuffered",
 	)
+	measureMode := askChoice(
+		"Enable RTT measurement for clients? [yes | no]: ",
+		"yes",
+		"no",
+	)
+	
 
 	const (
 		baseDir         = "D:\\Tolerex"
@@ -103,9 +110,10 @@ func main() {
 	)
 
 	fmt.Println("\n--- Configuration Summary ---")
-	fmt.Println("Client count  : 1")
+	fmt.Println("Client count  :", clientCount)
 	fmt.Println("Member count  :", memberCount)
 	fmt.Println("IO Mode       :", ioMode)
+	fmt.Println("RTT Measure   :", measureMode)
 	fmt.Println("-----------------------------")
 
 	// -------------------------------------------------------------------------------
@@ -114,8 +122,6 @@ func main() {
 
 	fmt.Println("Starting Leader...")
 
-	// Local senaryoda leader zaten localhost:5555 dinliyor.
-	// İstersen Leader'a da env basabilirsin ama şart değil.
 	spawnTerminal(
 		"LEADER",
 		fmt.Sprintf(
@@ -139,9 +145,6 @@ func main() {
 		grpcPort := startGrpcPort + i
 		metricsPort := startMetricPort + i
 
-		// ✅ En kritik fix:
-		// LEADER_ADDR kesinlikle localhost:5555 olmalı (Docker'daki leader:5555 değil)
-		// MEMBER_ADDR da leader'a kendini doğru advertise etmeli
 		spawnTerminal(
 			fmt.Sprintf("MEMBER-%d", grpcPort),
 			fmt.Sprintf(
@@ -163,18 +166,31 @@ func main() {
 	// -------------------------------------------------------------------------------
 	// Start Client (LOCAL)
 	// -------------------------------------------------------------------------------
+	clientCmd := "go run ./client/test_client.go"
+	if measureMode == "yes" {
+		clientCmd += " --measure"
+	}
 
-	fmt.Println("Starting Client...")
+	fmt.Println("Starting Clients...")
 
-	spawnTerminal(
-		"CLIENT",
-		fmt.Sprintf(
-			"cd %s; "+
-				"$env:LEADER_ADDR='localhost:5555'; "+
-				"go run ./client/test_client.go",
-			baseDir,
-		),
-	)
+	for i := 0; i < clientCount; i++ {
+
+		title := fmt.Sprintf("CLIENT-%d", i+1)
+		if measureMode == "yes" {
+			title += " [MEASURE]"
+		}
+
+		spawnTerminal(
+			title,
+			fmt.Sprintf(
+				"cd %s; "+
+					"$env:LEADER_ADDR='localhost:5555'; "+
+					"%s",
+				baseDir,
+				clientCmd,
+			),
+		)
+	}
 
 	fmt.Println("\nCluster successfully started.")
 }
