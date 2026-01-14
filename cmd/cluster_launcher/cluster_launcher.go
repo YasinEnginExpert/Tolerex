@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -18,14 +19,12 @@ func askInt(prompt string) int {
 
 	for {
 		fmt.Print(prompt)
-
 		text, _ := reader.ReadString('\n')
 		value, err := strconv.Atoi(strings.TrimSpace(text))
 
 		if err == nil && value > 0 {
 			return value
 		}
-
 		fmt.Println("Invalid number, please enter a positive integer.")
 	}
 }
@@ -86,7 +85,6 @@ func spawnTerminal(title, command string) {
 // ===================================================================================
 
 func main() {
-
 	fmt.Println("=== TOLEREX LOCAL CLUSTER LAUNCHER ===")
 
 	clientCount := askInt("Number of CLIENTS: ")
@@ -96,30 +94,49 @@ func main() {
 		"buffered",
 		"unbuffered",
 	)
+
 	measureMode := askChoice(
 		"Enable RTT measurement for clients? [yes | no]: ",
 		"yes",
 		"no",
 	)
-	
+
+	// Yeni client için CSV seçeneği
+	csvMode := "no"
+	if measureMode == "yes" {
+		csvMode = askChoice(
+			"Enable CSV output for RTT? [yes | no]: ",
+			"yes",
+			"no",
+		)
+	}
 
 	const (
 		baseDir         = "D:\\Tolerex"
 		startGrpcPort   = 5556
 		startMetricPort = 9092
+
+		// Yeni test_client.go TCP addr flag’i için:
+		// (Leader TCP control-plane hangi porttaysa onu yaz)
+		leaderTCPAddr = "localhost:6666"
 	)
+
+	// measured klasörünü garanti oluştur
+	measuredDir := filepath.Join(baseDir, "measured")
+	_ = os.MkdirAll(measuredDir, 0755)
 
 	fmt.Println("\n--- Configuration Summary ---")
 	fmt.Println("Client count  :", clientCount)
 	fmt.Println("Member count  :", memberCount)
 	fmt.Println("IO Mode       :", ioMode)
 	fmt.Println("RTT Measure   :", measureMode)
+	fmt.Println("CSV Output    :", csvMode)
+	fmt.Println("TCP Addr      :", leaderTCPAddr)
 	fmt.Println("-----------------------------")
 
 	// -------------------------------------------------------------------------------
 	// Start Leader node (LOCAL)
 	// -------------------------------------------------------------------------------
-
 	fmt.Println("Starting Leader...")
 
 	spawnTerminal(
@@ -138,7 +155,6 @@ func main() {
 	// -------------------------------------------------------------------------------
 	// Start Member nodes (LOCAL)
 	// -------------------------------------------------------------------------------
-
 	fmt.Println("Starting Members...")
 
 	for i := 0; i < memberCount; i++ {
@@ -164,28 +180,34 @@ func main() {
 	waitEnter("Press ENTER once all Members are ready...")
 
 	// -------------------------------------------------------------------------------
-	// Start Client (LOCAL)
+	// Start Client (LOCAL) - NEW test_client.go compatible
 	// -------------------------------------------------------------------------------
-	clientCmd := "go run ./client/test_client.go"
-	if measureMode == "yes" {
-		clientCmd += " --measure"
-	}
-
 	fmt.Println("Starting Clients...")
 
 	for i := 0; i < clientCount; i++ {
-
 		title := fmt.Sprintf("CLIENT-%d", i+1)
+
+		// Yeni client komutu: -addr, -measure, -csv
+		clientCmd := fmt.Sprintf("go run ./client/test_client.go -addr %s", leaderTCPAddr)
+
 		if measureMode == "yes" {
+			clientCmd += " -measure"
 			title += " [MEASURE]"
+		}
+		if csvMode == "yes" {
+			clientCmd += " -csv"
+			title += " [CSV]"
+
+			// CSV stdout -> dosyaya yönlendir.
+			// stderr (prompt/loglar) terminalde kalır, CSV temiz olur.
+			csvFile := fmt.Sprintf(".\\measured\\client-%02d.csv", i+1)
+			clientCmd += fmt.Sprintf(" > %s", csvFile)
 		}
 
 		spawnTerminal(
 			title,
 			fmt.Sprintf(
-				"cd %s; "+
-					"$env:LEADER_ADDR='localhost:5555'; "+
-					"%s",
+				"cd %s; %s",
 				baseDir,
 				clientCmd,
 			),
@@ -193,4 +215,7 @@ func main() {
 	}
 
 	fmt.Println("\nCluster successfully started.")
+	if csvMode == "yes" {
+		fmt.Println("CSV files are under:", measuredDir)
+	}
 }

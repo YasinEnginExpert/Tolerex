@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -26,6 +27,7 @@ const (
 var (
 	addr    = flag.String("addr", DEFAULT_ADDR, "Leader TCP address (e.g., localhost:6666)")
 	measure = flag.Bool("measure", false, "Measure RTT per command using a separate TCP connection")
+	csv     = flag.Bool("csv", false, "Output measurements as CSV to stdout (Timestamp,Operation,Count,Bytes,RTT_us). All logs/UI go to stderr.")
 )
 
 func connectLoop(address string) net.Conn {
@@ -34,7 +36,7 @@ func connectLoop(address string) net.Conn {
 		conn, err := dialer.Dial("tcp", address)
 		if err == nil {
 			if tcp, ok := conn.(*net.TCPConn); ok {
-				_ = tcp.SetNoDelay(true)
+				_ = tcp.SetNoDelay(true) // TCP_NODELAY
 			}
 			return conn
 		}
@@ -42,37 +44,41 @@ func connectLoop(address string) net.Conn {
 	}
 }
 
-// Drain any initial banner/prompt bytes from the measurement connection,
-// so our first RTT measurement isn't polluted by startup output.
-func drainMeasureStartup(mconn net.Conn, r *bufio.Reader, maxDur time.Duration) {
+// Wait for the leader prompt explicitly, to avoid startup sync issues.
+// This consumes everything up to and including "tolerex> ".
+func drainMeasureStartup(mconn net.Conn, r *bufio.Reader, maxDur time.Duration) error {
 	deadline := time.Now().Add(maxDur)
 	_ = mconn.SetReadDeadline(deadline)
+	defer mconn.SetReadDeadline(time.Time{})
 
-	// Read lines while available (banner lines end with \n)
+	p := []byte(SERVER_PROMPT)
+	window := make([]byte, 0, len(p))
+
 	for {
-		_, err := r.ReadString('\n')
+		b, err := r.ReadByte()
 		if err != nil {
-			break
+			return fmt.Errorf("startup sync failed (waiting for prompt): %w", err)
+		}
+
+		if len(window) < len(p) {
+			window = append(window, b)
+		} else {
+			copy(window, window[1:])
+			window[len(p)-1] = b
+		}
+
+		if len(window) == len(p) && bytes.Equal(window, p) {
+			return nil // prompt consumed
 		}
 	}
-
-	// Now try to read any remaining bytes (like "tolerex> " without newline)
-	_ = mconn.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
-	buf := make([]byte, 4096)
-	_, _ = mconn.Read(buf)
-
-	// Clear deadline
-	_ = mconn.SetReadDeadline(time.Time{})
 }
 
 // Consume the server prompt bytes from the measurement reader if present.
 // This is important because the prompt is not newline-terminated.
 func consumePrompt(mconn net.Conn, r *bufio.Reader) {
-	// Try a few times quickly to catch prompt bytes
 	for i := 0; i < 3; i++ {
 		_ = mconn.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
 
-		// Peek prompt length
 		b, err := r.Peek(len(SERVER_PROMPT))
 		if err == nil && string(b) == SERVER_PROMPT {
 			_, _ = r.Discard(len(SERVER_PROMPT))
@@ -80,7 +86,6 @@ func consumePrompt(mconn net.Conn, r *bufio.Reader) {
 			return
 		}
 
-		// Maybe there are leading \r or \n; eat whitespace and retry
 		one, err2 := r.Peek(1)
 		if err2 == nil && (one[0] == '\r' || one[0] == '\n' || one[0] == ' ') {
 			_, _ = r.Discard(1)
@@ -105,7 +110,6 @@ func readSemanticLine(mconn net.Conn, r *bufio.Reader, timeout time.Duration) (s
 		}
 		t := strings.TrimSpace(line)
 
-		// skip empties and banner-ish lines
 		if t == "" {
 			continue
 		}
@@ -125,7 +129,6 @@ func readSemanticLine(mconn net.Conn, r *bufio.Reader, timeout time.Duration) (s
 			continue
 		}
 
-		// This is a real response line (OK / ERROR / NOT_FOUND / value)
 		return t, nil
 	}
 }
@@ -168,13 +171,13 @@ func selectTestFile() (string, error) {
 		return "", fmt.Errorf("no test categories found")
 	}
 
-	fmt.Println("Select test category:")
+	fmt.Fprintln(os.Stderr, "Select test category:")
 	for i, c := range categories {
-		fmt.Printf("  %d) %s\n", i+1, c)
+		fmt.Fprintf(os.Stderr, "  %d) %s\n", i+1, c)
 	}
 
 	var catChoice int
-	fmt.Print("Choice: ")
+	fmt.Fprint(os.Stderr, "Choice: ")
 	fmt.Scanln(&catChoice)
 
 	if catChoice < 1 || catChoice > len(categories) {
@@ -189,13 +192,13 @@ func selectTestFile() (string, error) {
 		return "", fmt.Errorf("no txt files found in %s", category)
 	}
 
-	fmt.Printf("\nAvailable files in %s:\n", category)
+	fmt.Fprintf(os.Stderr, "\nAvailable files in %s:\n", category)
 	for i, f := range files {
-		fmt.Printf("  %d) %s\n", i+1, f)
+		fmt.Fprintf(os.Stderr, "  %d) %s\n", i+1, f)
 	}
 
 	var fileChoice int
-	fmt.Print("Select file: ")
+	fmt.Fprint(os.Stderr, "Select file: ")
 	fmt.Scanln(&fileChoice)
 
 	if fileChoice < 1 || fileChoice > len(files) {
@@ -212,33 +215,92 @@ func readWholeFile(path string) (string, error) {
 	}
 
 	content := string(data)
-
 	content = strings.ReplaceAll(content, "\r\n", " ")
 	content = strings.ReplaceAll(content, "\n", " ")
-
 	content = strings.Join(strings.Fields(content), " ")
-
 	return content, nil
+}
+
+// -----------------------------------------------------------------------------
+// CSV + HUMAN OUTPUT HELPERS
+// -----------------------------------------------------------------------------
+
+type rttStats struct {
+	count int64
+	sum   time.Duration
+	min   time.Duration
+	max   time.Duration
+}
+
+func (s *rttStats) add(rtt time.Duration) {
+	s.count++
+	s.sum += rtt
+	if rtt < s.min {
+		s.min = rtt
+	}
+	if rtt > s.max {
+		s.max = rtt
+	}
+}
+
+func opFromLine(line string) string {
+	f := strings.Fields(line)
+	if len(f) == 0 {
+		return "CMD"
+	}
+	return strings.ToUpper(f[0])
+}
+
+func emitStat(csvEnabled bool, csvOut *bufio.Writer, op string, count int, bytesSent int64, rtt time.Duration) {
+	if csvEnabled && csvOut != nil {
+		ts := time.Now().Format(time.RFC3339Nano)
+		fmt.Fprintf(csvOut, "%s,%s,%d,%d,%d\n", ts, op, count, bytesSent, rtt.Microseconds())
+		_ = csvOut.Flush()
+		return
+	}
+	fmt.Fprintf(os.Stderr, "RTT (%s): %d us | count=%d | bytes=%d\n", op, rtt.Microseconds(), count, bytesSent)
 }
 
 func main() {
 	flag.Parse()
 
+	// CSV mode requires measure, yoksa anlamı kalmıyor (RTT yok).
+	if *csv && !*measure {
+		fmt.Fprintln(os.Stderr, "ERROR: -csv requires -measure (CSV needs RTT). Run with: -measure -csv")
+		os.Exit(2)
+	}
+
+	// Scanner buffer
+	stdin := bufio.NewScanner(os.Stdin)
+	stdin.Buffer(make([]byte, 1024), 10*1024*1024)
+
+	// CSV output (stdout only)
+	var csvOut *bufio.Writer
+	if *csv {
+		csvOut = bufio.NewWriterSize(os.Stdout, 64*1024)
+		fmt.Fprintln(csvOut, "Timestamp,Operation,Count,Bytes,RTT_us")
+		_ = csvOut.Flush()
+	}
+
 	// --------------------------------------------------------------------
-	// 1) CLI CONNECTION (UNCHANGED TELNET BEHAVIOR)
+	// 1) CLI CONNECTION (interactive)
 	// --------------------------------------------------------------------
 	cliConn := connectLoop(*addr)
 	defer cliConn.Close()
 
-	
+	// stdout temiz kalsın: CSV stdout'ta; CLI output stderr'e gitsin
+	cliOut := os.Stdout
+	if *csv {
+		cliOut = os.Stderr
+	}
+
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, _ = io.Copy(os.Stdout, cliConn)
+		_, _ = io.Copy(cliOut, cliConn)
 	}()
 
 	cliWriter := bufio.NewWriterSize(cliConn, 64*1024)
-	stdin := bufio.NewScanner(os.Stdin)
 
 	// --------------------------------------------------------------------
 	// 2) MEASURE CONNECTION (ONLY IF --measure)
@@ -249,12 +311,7 @@ func main() {
 		mwriter *bufio.Writer
 	)
 
-	var (
-		rttCount int64
-		rttSum   time.Duration
-		rttMin   = time.Hour
-		rttMax   time.Duration
-	)
+	stats := rttStats{min: time.Hour}
 
 	if *measure {
 		mconn = connectLoop(*addr)
@@ -262,8 +319,10 @@ func main() {
 		mreader = bufio.NewReader(mconn)
 		mwriter = bufio.NewWriterSize(mconn, 64*1024)
 
-		// Drain banner/prompt so RTT starts clean
-		drainMeasureStartup(mconn, mreader, 700*time.Millisecond)
+		if err := drainMeasureStartup(mconn, mreader, 5*time.Second); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return
+		}
 	}
 
 	// --------------------------------------------------------------------
@@ -277,43 +336,70 @@ func main() {
 		if line == "" {
 			continue
 		}
+
 		// ----------------------------------------------------------------
 		// BULK FILE MODE
 		// Syntax: <N> FILE
+		// CSV: tek satır -> BULK_FILE,Count,Bytes,RTT_us
 		// ----------------------------------------------------------------
 		fields := strings.Fields(line)
 		if len(fields) == 2 {
-			if bulkCount, err := strconv.Atoi(fields[0]); err == nil &&
-				strings.EqualFold(fields[1], "FILE") {
+			if bulkCount, err := strconv.Atoi(fields[0]); err == nil && strings.EqualFold(fields[1], "FILE") {
 
-				// 1) dosya seçtir
 				path, err := selectTestFile()
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "File selection error:", err)
 					continue
 				}
 
-				// 2) dosyayı oku (tek satır)
 				content, err := readWholeFile(path)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "File read error:", err)
 					continue
 				}
 
-				// 3) base message id al
-				fmt.Print("Base message ID: ")
+				fmt.Fprint(os.Stderr, "Base message ID: ")
 				var baseID int
 				fmt.Scanln(&baseID)
 
-				start := time.Now()
+				startBulk := time.Now()
+				var bytesSent int64
 
-				// 4) BULK FILE SET
+				// RTT sample: first + last (sonra average alacağız)
+				var sampleRTTs []time.Duration
+
 				for i := 0; i < bulkCount; i++ {
 					id := baseID + i
 					cmd := fmt.Sprintf("SET %d %s\r\n", id, content)
+					bytesSent += int64(len(cmd))
 
 					if _, err := cliWriter.WriteString(cmd); err != nil {
 						return
+					}
+
+					// measure only first & last
+					if *measure && mwriter != nil && mreader != nil && (i == 0 || i == bulkCount-1) {
+						startRTT := time.Now()
+
+						if _, err := mwriter.WriteString(cmd); err != nil {
+							fmt.Fprintln(os.Stderr, "measure write error:", err)
+							continue
+						}
+						if err := mwriter.Flush(); err != nil {
+							fmt.Fprintln(os.Stderr, "measure flush error:", err)
+							continue
+						}
+
+						_, rerr := readSemanticLine(mconn, mreader, 10*time.Second)
+						rtt := time.Since(startRTT)
+						consumePrompt(mconn, mreader)
+
+						if rerr == nil {
+							stats.add(rtt)
+							sampleRTTs = append(sampleRTTs, rtt)
+						} else {
+							fmt.Fprintln(os.Stderr, "RTT read error:", rerr)
+						}
 					}
 
 					if (i+1)%BULK_FLUSH_EVERY == 0 {
@@ -324,46 +410,63 @@ func main() {
 				}
 				_ = cliWriter.Flush()
 
-				total := time.Since(start)
-				avg := total / time.Duration(bulkCount)
+				totalBulk := time.Since(startBulk)
+				avgBulk := totalBulk / time.Duration(bulkCount)
 
-				fmt.Fprintf(
-					os.Stderr,
-					"BULK FILE DONE: %d SET | total=%d ms | avg=%d us | payload=%d bytes\n",
+				// Aggregate RTT: sample avg (first+last)/2 or first/only
+				aggRTT := time.Duration(0)
+				if len(sampleRTTs) == 1 {
+					aggRTT = sampleRTTs[0]
+				} else if len(sampleRTTs) >= 2 {
+					aggRTT = (sampleRTTs[0] + sampleRTTs[len(sampleRTTs)-1]) / 2
+				}
+
+				// CSV: tek satır (plan formatına uygun)
+				if *measure && *csv && aggRTT > 0 {
+					emitStat(true, csvOut, "BULK_FILE", bulkCount, bytesSent, aggRTT)
+				}
+
+				// İnsan okunabilir özet (stderr)
+				fmt.Fprintf(os.Stderr,
+					"BULK FILE DONE: %d SET | total=%d ms | avg=%d us | bytes=%d | payload=%d bytes | sampleRTT=%d us\n",
 					bulkCount,
-					total.Milliseconds(),
-					avg.Microseconds(),
+					totalBulk.Milliseconds(),
+					avgBulk.Microseconds(),
+					bytesSent,
 					len(content),
+					aggRTT.Microseconds(),
 				)
 
 				continue
 			}
 		}
 
+		// ----------------------------------------------------------------
+		// SINGLE FILE MODE
+		// Syntax: FILE
+		// CSV: FILE_SET,1,Bytes,RTT
+		// ----------------------------------------------------------------
 		if strings.EqualFold(line, "FILE") {
 
-			// 1) dosya seçtir
 			path, err := selectTestFile()
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "File selection error:", err)
 				continue
 			}
 
-			// 2) dosyanın tamamını oku
 			content, err := readWholeFile(path)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "File read error:", err)
 				continue
 			}
 
-			// 3) message id al
-			fmt.Print("Base message ID: ")
+			fmt.Fprint(os.Stderr, "Base message ID: ")
 			var msgID int
 			fmt.Scanln(&msgID)
 
 			cmd := fmt.Sprintf("SET %d %s\r\n", msgID, content)
+			bytesSent := int64(len(cmd))
 
-			// 4) CLI bağlantısından gönder (normal davranış)
 			if _, err := cliWriter.WriteString(cmd); err != nil {
 				fmt.Fprintln(os.Stderr, "CLI write error:", err)
 				continue
@@ -373,10 +476,8 @@ func main() {
 				continue
 			}
 
-			// 5) RTT ölçümü (measure açıksa)
 			if *measure && mwriter != nil && mreader != nil {
-
-				start := time.Now()
+				startRTT := time.Now()
 
 				if _, err := mwriter.WriteString(cmd); err != nil {
 					fmt.Fprintln(os.Stderr, "measure write error:", err)
@@ -388,8 +489,7 @@ func main() {
 				}
 
 				_, rerr := readSemanticLine(mconn, mreader, 10*time.Second)
-				rtt := time.Since(start)
-
+				rtt := time.Since(startRTT)
 				consumePrompt(mconn, mreader)
 
 				if rerr != nil {
@@ -397,22 +497,16 @@ func main() {
 					continue
 				}
 
-				rttCount++
-				rttSum += rtt
-				if rtt < rttMin {
-					rttMin = rtt
-				}
-				if rtt > rttMax {
-					rttMax = rtt
-				}
-
-				fmt.Fprintf(os.Stderr, "RTT (file): %d us\n", rtt.Microseconds())
+				stats.add(rtt)
+				emitStat(*csv, csvOut, "FILE_SET", 1, bytesSent, rtt)
 			}
 
 			continue
 		}
 
+		// ----------------------------------------------------------------
 		// QUIT/EXIT
+		// ----------------------------------------------------------------
 		if strings.EqualFold(line, "EXIT") || strings.EqualFold(line, "QUIT") {
 			_, _ = cliWriter.WriteString("QUIT\r\n")
 			_ = cliWriter.Flush()
@@ -422,13 +516,13 @@ func main() {
 				_ = mwriter.Flush()
 			}
 
-			if *measure && rttCount > 0 {
-				avg := rttSum / time.Duration(rttCount)
+			if *measure && stats.count > 0 {
+				avg := stats.sum / time.Duration(stats.count)
 				fmt.Fprintln(os.Stderr, "\n=== RTT SUMMARY ===")
-				fmt.Fprintf(os.Stderr, "Samples : %d\n", rttCount)
-				fmt.Fprintf(os.Stderr, "Min RTT : %d us\n", rttMin.Microseconds())
+				fmt.Fprintf(os.Stderr, "Samples : %d\n", stats.count)
+				fmt.Fprintf(os.Stderr, "Min RTT : %d us\n", stats.min.Microseconds())
 				fmt.Fprintf(os.Stderr, "Avg RTT : %d us\n", avg.Microseconds())
-				fmt.Fprintf(os.Stderr, "Max RTT : %d us\n", rttMax.Microseconds())
+				fmt.Fprintf(os.Stderr, "Max RTT : %d us\n", stats.max.Microseconds())
 				fmt.Fprintln(os.Stderr, "===================")
 			}
 
@@ -437,8 +531,9 @@ func main() {
 		}
 
 		// ----------------------------------------------------------------
-		// BULK MODE (same as before for CLI)
+		// BULK SET MODE (CLI only + OPTIONAL RTT sample)
 		// Syntax: <N> SET <message>
+		// CSV: BULK_SET,Count,Bytes,RTT(sample avg)
 		// ----------------------------------------------------------------
 		fields = strings.Fields(line)
 		if len(fields) >= 3 {
@@ -446,13 +541,44 @@ func main() {
 				if strings.EqualFold(fields[1], "SET") {
 
 					baseMsg := strings.Join(fields[2:], " ")
-					start := time.Now()
+					startBulk := time.Now()
+
+					var bytesSent int64
+					var sampleRTTs []time.Duration
 
 					for i := 1; i <= bulkCount; i++ {
 						cmd := fmt.Sprintf("SET %d %s_%d\r\n", i, baseMsg, i)
+						bytesSent += int64(len(cmd))
+
 						if _, err := cliWriter.WriteString(cmd); err != nil {
 							return
 						}
+
+						// measure only first & last (same behavior as BULK FILE)
+						if *measure && mwriter != nil && mreader != nil && (i == 1 || i == bulkCount) {
+							startRTT := time.Now()
+
+							if _, err := mwriter.WriteString(cmd); err != nil {
+								fmt.Fprintln(os.Stderr, "measure write error:", err)
+								continue
+							}
+							if err := mwriter.Flush(); err != nil {
+								fmt.Fprintln(os.Stderr, "measure flush error:", err)
+								continue
+							}
+
+							_, rerr := readSemanticLine(mconn, mreader, 10*time.Second)
+							rtt := time.Since(startRTT)
+							consumePrompt(mconn, mreader)
+
+							if rerr == nil {
+								stats.add(rtt)
+								sampleRTTs = append(sampleRTTs, rtt)
+							} else {
+								fmt.Fprintln(os.Stderr, "RTT read error:", rerr)
+							}
+						}
+
 						if i%BULK_FLUSH_EVERY == 0 {
 							if err := cliWriter.Flush(); err != nil {
 								return
@@ -461,12 +587,22 @@ func main() {
 					}
 					_ = cliWriter.Flush()
 
-					total := time.Since(start)
-					avg := total / time.Duration(bulkCount)
+					totalBulk := time.Since(startBulk)
+					avgBulk := totalBulk / time.Duration(bulkCount)
 
-					// Print bulk stats to stderr (don’t disturb CLI)
-					fmt.Fprintf(os.Stderr, "BULK DONE: %d SET in %d ms (avg %d us)\n",
-						bulkCount, total.Milliseconds(), avg.Microseconds())
+					aggRTT := time.Duration(0)
+					if len(sampleRTTs) == 1 {
+						aggRTT = sampleRTTs[0]
+					} else if len(sampleRTTs) >= 2 {
+						aggRTT = (sampleRTTs[0] + sampleRTTs[len(sampleRTTs)-1]) / 2
+					}
+
+					if *measure && *csv && aggRTT > 0 {
+						emitStat(true, csvOut, "BULK_SET", bulkCount, bytesSent, aggRTT)
+					}
+
+					fmt.Fprintf(os.Stderr, "BULK DONE: %d SET in %d ms (avg %d us) | bytes=%d | sampleRTT=%d us\n",
+						bulkCount, totalBulk.Milliseconds(), avgBulk.Microseconds(), bytesSent, aggRTT.Microseconds())
 
 					continue
 				}
@@ -486,9 +622,14 @@ func main() {
 
 		// ----------------------------------------------------------------
 		// MEASURE RTT (separate connection)
+		// CSV: OP,1,Bytes,RTT
 		// ----------------------------------------------------------------
 		if *measure && mwriter != nil && mreader != nil && mconn != nil {
-			start := time.Now()
+			op := opFromLine(line)
+			// line + "\r\n" gönderiyoruz => +2 byte varsayımı
+			cmdBytes := int64(len(line) + 2)
+
+			startRTT := time.Now()
 
 			_, err := mwriter.WriteString(line + "\r\n")
 			if err != nil {
@@ -500,11 +641,8 @@ func main() {
 				continue
 			}
 
-			// Read the semantic response line (OK/ERROR/NOT_FOUND/value)
 			_, rerr := readSemanticLine(mconn, mreader, 5*time.Second)
-			rtt := time.Since(start)
-
-			// Consume the prompt bytes so next command doesn't see old prompt
+			rtt := time.Since(startRTT)
 			consumePrompt(mconn, mreader)
 
 			if rerr != nil {
@@ -512,17 +650,8 @@ func main() {
 				continue
 			}
 
-			rttCount++
-			rttSum += rtt
-			if rtt < rttMin {
-				rttMin = rtt
-			}
-			if rtt > rttMax {
-				rttMax = rtt
-			}
-
-			// Print RTT to stderr so prompt/output ordering stays intact
-			fmt.Fprintf(os.Stderr, "RTT: %d us\n", rtt.Microseconds())
+			stats.add(rtt)
+			emitStat(*csv, csvOut, op, 1, cmdBytes, rtt)
 		}
 	}
 }
