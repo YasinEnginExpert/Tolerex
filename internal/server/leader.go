@@ -224,7 +224,15 @@ func NewLeaderServer(members []string, toleranceFile string) (*LeaderServer, err
 	}
 
 	// Default load balancer (moved out of leader.go)
-	leader.Balancer = &LeastLoadedBalancer{}
+	// Load Balancer Stratgey Selection
+	strategy := os.Getenv("BALANCER_STRATEGY")
+	if strategy == "p2c" {
+		logger.Info(logger.Leader, "Using Load Balancer: Power of Two Choices (P2C)")
+		leader.Balancer = &PowerOfTwoChoicesBalancer{}
+	} else {
+		logger.Info(logger.Leader, "Using Load Balancer: Least Loaded (Default)")
+		leader.Balancer = &LeastLoadedBalancer{}
+	}
 
 	// Prepare mTLS credentials for Leader→Member RPC (if not in test mode).
 	if os.Getenv("TOLEREX_TEST_MODE") != "1" {

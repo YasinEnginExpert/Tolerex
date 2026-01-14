@@ -8,13 +8,23 @@ topology:
     # ------------------------------------------------------------------
     nokia-switch:
       kind: linux
-      # If you have the Nokia SR Linux image, uncommment the line below:
-      # image: ghcr.io/nokia/srlinux 
-      # Otherwise, we use a lightweight alpine image to visualize the central node
       image: alpine:latest 
       cmd: sh -c "sleep infinity"
       labels:
         role: core-switch
+        icon: router
+
+    # ------------------------------------------------------------------
+    # CLIENT SIMULATOR (Added as per request)
+    # ------------------------------------------------------------------
+    client-node:
+      kind: linux
+      image: tolerex-node:latest
+      # Keep it alive to run manual commands
+      cmd: sh -c "sleep infinity"
+      labels:
+        role: client
+        icon: host
 
     # ------------------------------------------------------------------
     # LEADER NODE
@@ -22,17 +32,18 @@ topology:
     leader:
       kind: linux
       image: tolerex-node:latest
-      # We assume the image is already built locally via `docker build -t tolerex-node .`
       cmd: ./leader
       env:
         LEADER_GRPC_PORT: "5555"
         LEADER_METRICS_PORT: "9090"
       ports:
-        - "5555:5555"
-        - "6666:6666"
-        - "9090:9090"
+        # Changed host ports to avoid conflict with docker-compose
+        - "5555:5555" 
+        - "6667:6666" # Mapped to 6667 on host to avoid conflict
+        - "9095:9090" # Mapped to 9095
       labels:
         role: leader
+        icon: server
 
     # ------------------------------------------------------------------
     # MEMBER NODES
@@ -45,9 +56,10 @@ topology:
         LEADER_ADDR: "leader:5555"
         MEMBER_ADDR: "member1:5556"
       ports:
-        - "9092:9092"
+        - "9096:9092"
       labels:
         role: member
+        icon: database
 
     member2:
       kind: linux
@@ -57,9 +69,10 @@ topology:
         LEADER_ADDR: "leader:5555"
         MEMBER_ADDR: "member2:5557"
       ports:
-        - "9093:9093"
+        - "9097:9093"
       labels:
         role: member
+        icon: database
 
     member3:
       kind: linux
@@ -69,46 +82,54 @@ topology:
         LEADER_ADDR: "leader:5555"
         MEMBER_ADDR: "member3:5558"
       ports:
-        - "9094:9094"
+        - "9098:9094"
       labels:
         role: member
+        icon: database
 
     # ------------------------------------------------------------------
-    # MONITORING STACK
+    # MONITORING STACK (Wireless Topology)
     # ------------------------------------------------------------------
+    # These communicate via the Management Network (Docker Bridge)
+    # We removed physical 'links' so they don't clutter the graph.
     prometheus:
       kind: linux
       image: prom/prometheus:latest
-      # Mount the configuration file from local host
       binds:
         - prometheus.yml:/etc/prometheus/prometheus.yml:ro
       cmd: --config.file=/etc/prometheus/prometheus.yml
+      # Mapped to 9099 on host to avoid conflict
       ports:
-        - "9091:9090"
+        - "9099:9090"
       labels:
         role: monitoring
+        graph-hide: yes # Suggestion to hide wires if tool supports it, but purely removing links works.
 
     grafana:
       kind: linux
       image: grafana/grafana:latest
       env:
         GF_SECURITY_ADMIN_PASSWORD: admin
+      # Mapped to 3001 on host to avoid conflict
       ports:
-        - "3000:3000"
+        - "3001:3000"
       labels:
         role: monitoring
 
   # ------------------------------------------------------------------
-  # LINKS (Topology Visualization & Data Plane)
+  # PHYSICAL LINKS
   # ------------------------------------------------------------------
-  # Note: Containerlab creates a management network (docker bridge) automatically.
-  # These links create extra interfaces (eth1, eth2...) for point-to-point connections.
-  # For Tolerex to use these specifically, routing would need to be configured inside containers.
-  # For this demo, these links primarily serve the 'visual topology' aspect.
   links:
-    - endpoints: ["nokia-switch:eth1", "leader:eth1"]
-    - endpoints: ["nokia-switch:eth2", "grafana:eth1"]
+    # Client <--> Nokia Switch
+    - endpoints: ["client-node:eth1", "nokia-switch:eth1"]
+    
+    # Nokia Switch <--> Leader
+    - endpoints: ["nokia-switch:eth2", "leader:eth1"]
+
+    # Leader <--> Members (Backend Connections)
     - endpoints: ["leader:eth2", "member1:eth1"]
     - endpoints: ["leader:eth3", "member2:eth1"]
     - endpoints: ["leader:eth4", "member3:eth1"]
 
+    # Prometheus & Grafana are NOT linked here.
+    # They will use the implicit 'tolerex-lab-mgmt' docker network to scrape targets.

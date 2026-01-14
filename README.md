@@ -318,7 +318,43 @@ Timestamp,ClientID,Operation,Count,Bytes,RTT_us
 
 ---
 
+
+## Configuration
+
+The system can be configured via environment variables or `.env` file.
+
+| Variable | Options | Description |
+| :--- | :--- | :--- |
+| `LEADER_GRPC_PORT` | `5555` | Port for Leader-Member communication |
+| `LEADER_METRICS_PORT` | `9090` | Prometheus scrape port for Leader |
+| `MEMBER_ADDR` | `host:port` | Member's own address for registration |
+| `TOLEREX_TEST_MODE` | `1` or `0` | Disables mTLS for local testing (default: 0) |
+| `BALANCER_STRATEGY` | `least_loaded` or `p2c` | Selects load balancing algorithm (default: `least_loaded`) |
+
+### Load Balancing Strategies
+
+You can switch between two load balancing algorithms by setting the `BALANCER_STRATEGY` environment variable:
+
+1.  **Least Loaded (`default`)**:
+    - Selects the member with the absolute lowest message count.
+    - **Best for:** Small clusters (< 50 nodes) where accuracy is critical.
+    - **Algorithmic Cost:** O(N log N) due to sorting.
+
+2.  **Power of Two Choices (`p2c`)**:
+    - Picks two random members and selects the one with lower load.
+    - **Best for:** Large clusters (> 100 nodes) or high-throughput scenarios.
+    - **Algorithmic Cost:** O(1) constant time.
+
+    ```bash
+    # Enable P2C Strategy
+    export BALANCER_STRATEGY=p2c
+    go run cmd/leader/main.go
+    ```
+
+---
+
 ## Architecture
+
 
 Tolerex follows a **centralized leader-based architecture**.
 
@@ -643,11 +679,20 @@ The system has been optimized for high-throughput, low-latency operation.
 
 ### 3. Buffered I/O Modes
 
-Members support two I/O strategies:
-- **Buffered:** `bufio.Writer` for batched disk writes (higher throughput)
-- **Unbuffered:** `os.WriteFile` for immediate syscalls (stronger durability)
 
-Choose based on your durability vs. performance requirements.
+
+The system supports two distinct I/O strategies for disk persistence, configurable via the `-io` flag. This allows operators to trade off between throughput and data safety guarantees.
+
+| Feature | Buffered Mode (`buffered`) | Unbuffered Mode (`unbuffered`) |
+| :--- | :--- | :--- |
+| **Implementation** | `bufio.Writer` (Userspace buffering) | `os.WriteFile` (Direct syscall wrapper) |
+| **Write Strategy** | Writes to memory buffer first, then flushes to disk | Writes directly to the file descriptor |
+| **System Calls** | Minimized (ideal for small, frequent writes) | One per write operation |
+| **Throughput** | **High** (Reduced kernel context switching) | **Moderate** (Higher overhead per op) |
+| **Durability** | **Lower** (Risk of data loss if process crashes before flush) | **High** (Data hand-off to OS is immediate) |
+| **Ideal For** | High-volume logs, temporary data, non-blocking streams | Financial transactions, WAL, strong consistency needs |
+
+> **Note:** In the current implementation, strict consistency is prioritized; thus, the buffered mode performs a flush operation after each message. However, it initializes the architecture for future batch-write optimizations.
 
 ---
 
@@ -914,10 +959,9 @@ Features are prioritized based on:
 
 ### Tools & Assistance
 
-- **ChatGPT**  
-  Used as an interactive assistant for:
+- **ChatGPT & Gemini**  
+  Used as interactive assistants for:
   - Architectural discussions
   - Code review and refactoring
   - Documentation improvement
-
   - Conceptual explanations of distributed systems and Go internals

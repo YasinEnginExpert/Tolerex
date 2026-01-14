@@ -76,6 +76,7 @@ const (
 	ERROR              // 3
 	FATAL              // 4
 )
+
 // ===================================================================================
 // LOG LEVEL MANAGEMENT
 // ===================================================================================
@@ -132,11 +133,11 @@ func Init() {
 
 	writer := &lumberjack.Logger{
 		Filename:   filepath.Join(baseDir, "tolerex.log"), // log file path
-		MaxSize:    5, // MB
-		MaxBackups: 7, // files
-		MaxAge:     7, // days
-		Compress:   true, // enabled
-		
+		MaxSize:    5,                                     // MB
+		MaxBackups: 7,                                     // files
+		MaxAge:     7,                                     // days
+		Compress:   true,                                  // enabled
+
 	}
 
 	// Include timestamps and source location for debugging

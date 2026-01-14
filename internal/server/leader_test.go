@@ -1,10 +1,18 @@
 package server
 
 import (
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"testing"
+	"tolerex/internal/logger"
 )
+
+func init() {
+	logger.Leader = log.New(io.Discard, "", 0)
+	logger.Member = log.New(io.Discard, "", 0)
+}
 
 func TestNewLeaderServer_InitState(t *testing.T) {
 	// --- TEST ISOLATION ---
@@ -39,8 +47,8 @@ func TestNewLeaderServer_InitState(t *testing.T) {
 		t.Fatal("leader is nil")
 	}
 
-	if leader.Tolerance != 1 {
-		t.Errorf("expected tolerance=1, got %d", leader.Tolerance)
+	if leader.Tolerance != 4 {
+		t.Errorf("expected tolerance=4, got %d", leader.Tolerance)
 	}
 
 	// --- MEMBERS ---

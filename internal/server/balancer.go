@@ -1,6 +1,9 @@
 package server
 
-import "sort"
+import (
+	"math/rand"
+	"sort"
+)
 
 // MemberLoad: Leader'ın seçim yapması için ihtiyaç duyduğu "yük" snapshot'ı.
 // (MemberInfo'nun tamamını taşımıyoruz; sadece seçim için gerekenler.)
@@ -43,5 +46,61 @@ func (b *LeastLoadedBalancer) Pick(candidates []MemberLoad, tolerance int) []Mem
 	for i := 0; i < tolerance; i++ {
 		out = append(out, candidates[i])
 	}
+	return out
+}
+
+// PowerOfTwoChoicesBalancer: "The Power of Two Choices" algoritması.
+// N eleman arasından rastgele 2 tane seçer, yükü az olanı alır.
+// Büyük ölçekli sistemlerde tüm listeyi sıralamak (sort) pahalı olduğunda kullanılır.
+type PowerOfTwoChoicesBalancer struct{}
+
+func (b *PowerOfTwoChoicesBalancer) Pick(candidates []MemberLoad, tolerance int) []MemberLoad {
+	if tolerance <= 0 || len(candidates) == 0 {
+		return nil
+	}
+
+	// Yeterli aday yoksa veya tam sayı isteniyorsa hepsini dön
+	if len(candidates) <= tolerance {
+		return candidates
+	}
+
+	out := make([]MemberLoad, 0, tolerance)
+
+	// Aday havuzunun kopyası üzerinde çalışalım ki orijinali bozulmasın
+	pool := make([]MemberLoad, len(candidates))
+	copy(pool, candidates)
+
+	// tolerance kadar seçim yapacağız
+	for i := 0; i < tolerance; i++ {
+		// Havuzda tek eleman kaldıysa mecbur onu seç
+		if len(pool) == 1 {
+			out = append(out, pool[0])
+			break
+		}
+
+		// Rastgele 2 indeks seç
+		idx1 := rand.Intn(len(pool))
+		idx2 := rand.Intn(len(pool))
+
+		// Eğer aynı indeksi seçtiysek, farklı olana kadar dene (retry limit koymak iyi olabilir ama len>1 ise sorun olmaz)
+		for idx1 == idx2 {
+			idx2 = rand.Intn(len(pool))
+		}
+
+		// Karşılaştır
+		winnerIdx := idx1
+		if pool[idx2].Count < pool[idx1].Count {
+			winnerIdx = idx2
+		}
+
+		// Kazananı listeye ekle
+		out = append(out, pool[winnerIdx])
+
+		// Kazananı havuzdan çıkar (swap with last & shrink)
+		lastIdx := len(pool) - 1
+		pool[winnerIdx] = pool[lastIdx]
+		pool = pool[:lastIdx]
+	}
+
 	return out
 }
