@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # ========================================
+  # LEADER NODE
+  # ========================================
+  leader:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: tolerex-node:latest
+    container_name: tolerex-leader
+    command: ["./leader"]
+    environment:
+      - LEADER_GRPC_PORT=5555
+      - LEADER_METRICS_PORT=9090
+      - TOLEREX_ENV=docker
+    ports:
+      - "6666:6666" # Client TCP Interface
+      - "5555:5555" # gRPC
+      - "9090:9090" # Metrics
+    networks:
+      - tolerex-net
+    volumes:
+      - leader-data:/root/internal/data
+
+  # ========================================
+  # MEMBER NODES
+  # ========================================
+  member-1:
+    image: tolerex-node:latest
+    container_name: tolerex-member-1
+    command: ["./member", "-port=5556", "-metrics=9092", "-io=buffered"]
+    environment:
+      - LEADER_ADDR=leader:5555
+      - MEMBER_ADDR=member-1:5556
+    ports:
+      - "5556:5556"
+      - "9092:9092"
+    depends_on:
+      - leader
+    networks:
+      - tolerex-net
+    volumes:
+      - member1-data:/root/internal/data
+
+  member-2:
+    image: tolerex-node:latest
+    container_name: tolerex-member-2
+    command: ["./member", "-port=5557", "-metrics=9093", "-io=buffered"]
+    environment:
+      - LEADER_ADDR=leader:5555
+      - MEMBER_ADDR=member-2:5557
+    ports:
+      - "5557:5557"
+      - "9093:9093"
+    depends_on:
+      - leader
+    networks:
+      - tolerex-net
+    volumes:
+      - member2-data:/root/internal/data
+
+  member-3:
+    image: tolerex-node:latest
+    container_name: tolerex-member-3
+    command: ["./member", "-port=5558", "-metrics=9094", "-io=buffered"]
+    environment:
+      - LEADER_ADDR=leader:5555
+      - MEMBER_ADDR=member-3:5558
+    ports:
+      - "5558:5558"
+      - "9094:9094"
+    depends_on:
+      - leader
+    networks:
+      - tolerex-net
+    volumes:
+      - member3-data:/root/internal/data
+
+  # ========================================
+  # MONITORING STACK
+  # ========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tolerex-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - "9091:9090"
+    networks:
+      - tolerex-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: tolerex-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    networks:
+      - tolerex-net
+    depends_on:
+      - prometheus
+
+networks:
+  tolerex-net:
+    driver: bridge
+
+volumes:
+  leader-data:
+  member1-data:
+  member2-data:
+  member3-data:

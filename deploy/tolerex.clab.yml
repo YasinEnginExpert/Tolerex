@@ -1,0 +1,114 @@
+name: tolerex-lab
+
+# Basics
+topology:
+  nodes:
+    # ------------------------------------------------------------------
+    # CORE SWITCH (Simulated Nokia SR Linux or generic Linux Bridge)
+    # ------------------------------------------------------------------
+    nokia-switch:
+      kind: linux
+      # If you have the Nokia SR Linux image, uncommment the line below:
+      # image: ghcr.io/nokia/srlinux 
+      # Otherwise, we use a lightweight alpine image to visualize the central node
+      image: alpine:latest 
+      cmd: sh -c "sleep infinity"
+      labels:
+        role: core-switch
+
+    # ------------------------------------------------------------------
+    # LEADER NODE
+    # ------------------------------------------------------------------
+    leader:
+      kind: linux
+      image: tolerex-node:latest
+      # We assume the image is already built locally via `docker build -t tolerex-node .`
+      cmd: ./leader
+      env:
+        LEADER_GRPC_PORT: "5555"
+        LEADER_METRICS_PORT: "9090"
+      ports:
+        - "5555:5555"
+        - "6666:6666"
+        - "9090:9090"
+      labels:
+        role: leader
+
+    # ------------------------------------------------------------------
+    # MEMBER NODES
+    # ------------------------------------------------------------------
+    member1:
+      kind: linux
+      image: tolerex-node:latest
+      cmd: ./member -port=5556 -metrics=9092 -io=buffered
+      env:
+        LEADER_ADDR: "leader:5555"
+        MEMBER_ADDR: "member1:5556"
+      ports:
+        - "9092:9092"
+      labels:
+        role: member
+
+    member2:
+      kind: linux
+      image: tolerex-node:latest
+      cmd: ./member -port=5557 -metrics=9093 -io=buffered
+      env:
+        LEADER_ADDR: "leader:5555"
+        MEMBER_ADDR: "member2:5557"
+      ports:
+        - "9093:9093"
+      labels:
+        role: member
+
+    member3:
+      kind: linux
+      image: tolerex-node:latest
+      cmd: ./member -port=5558 -metrics=9094 -io=buffered
+      env:
+        LEADER_ADDR: "leader:5555"
+        MEMBER_ADDR: "member3:5558"
+      ports:
+        - "9094:9094"
+      labels:
+        role: member
+
+    # ------------------------------------------------------------------
+    # MONITORING STACK
+    # ------------------------------------------------------------------
+    prometheus:
+      kind: linux
+      image: prom/prometheus:latest
+      # Mount the configuration file from local host
+      binds:
+        - prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      cmd: --config.file=/etc/prometheus/prometheus.yml
+      ports:
+        - "9091:9090"
+      labels:
+        role: monitoring
+
+    grafana:
+      kind: linux
+      image: grafana/grafana:latest
+      env:
+        GF_SECURITY_ADMIN_PASSWORD: admin
+      ports:
+        - "3000:3000"
+      labels:
+        role: monitoring
+
+  # ------------------------------------------------------------------
+  # LINKS (Topology Visualization & Data Plane)
+  # ------------------------------------------------------------------
+  # Note: Containerlab creates a management network (docker bridge) automatically.
+  # These links create extra interfaces (eth1, eth2...) for point-to-point connections.
+  # For Tolerex to use these specifically, routing would need to be configured inside containers.
+  # For this demo, these links primarily serve the 'visual topology' aspect.
+  links:
+    - endpoints: ["nokia-switch:eth1", "leader:eth1"]
+    - endpoints: ["nokia-switch:eth2", "grafana:eth1"]
+    - endpoints: ["leader:eth2", "member1:eth1"]
+    - endpoints: ["leader:eth3", "member2:eth1"]
+    - endpoints: ["leader:eth4", "member3:eth1"]
+

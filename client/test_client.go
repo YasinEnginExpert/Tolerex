@@ -25,9 +25,12 @@ const (
 )
 
 var (
-	addr    = flag.String("addr", DEFAULT_ADDR, "Leader TCP address (e.g., localhost:6666)")
-	measure = flag.Bool("measure", false, "Measure RTT per command using a separate TCP connection")
-	csv     = flag.Bool("csv", false, "Output measurements as CSV to stdout (Timestamp,Operation,Count,Bytes,RTT_us). All logs/UI go to stderr.")
+	addr       = flag.String("addr", DEFAULT_ADDR, "Leader TCP address (e.g., localhost:6666)")
+	measure    = flag.Bool("measure", false, "Measure RTT per command using a separate TCP connection")
+	csv        = flag.Bool("csv", false, "Output measurements as CSV to stdout (Timestamp,Operation,Count,Bytes,RTT_us). All logs/UI go to stderr.")
+	flushEvery = flag.Int("flush", 1000, "Flush buffer after every N operations (default 1000). Set to 1 for unbuffered.")
+	offset     = flag.Int("offset", 0, "Starting ID offset for BULK operations (default 0)")
+	clientID   = flag.String("id", "client", "Client Identifier for CSV output (default 'client')")
 )
 
 func connectLoop(address string) net.Conn {
@@ -254,7 +257,7 @@ func opFromLine(line string) string {
 func emitStat(csvEnabled bool, csvOut *bufio.Writer, op string, count int, bytesSent int64, rtt time.Duration) {
 	if csvEnabled && csvOut != nil {
 		ts := time.Now().Format(time.RFC3339Nano)
-		fmt.Fprintf(csvOut, "%s,%s,%d,%d,%d\n", ts, op, count, bytesSent, rtt.Microseconds())
+		fmt.Fprintf(csvOut, "%s,%s,%s,%d,%d,%d\n", ts, *clientID, op, count, bytesSent, rtt.Microseconds())
 		_ = csvOut.Flush()
 		return
 	}
@@ -278,7 +281,8 @@ func main() {
 	var csvOut *bufio.Writer
 	if *csv {
 		csvOut = bufio.NewWriterSize(os.Stdout, 64*1024)
-		fmt.Fprintln(csvOut, "Timestamp,Operation,Count,Bytes,RTT_us")
+		// Print CSV Header
+		fmt.Fprintln(csvOut, "Timestamp,ClientID,Operation,Count,Bytes,RTT_us")
 		_ = csvOut.Flush()
 	}
 
@@ -547,7 +551,9 @@ func main() {
 					var sampleRTTs []time.Duration
 
 					for i := 1; i <= bulkCount; i++ {
-						cmd := fmt.Sprintf("SET %d %s_%d\r\n", i, baseMsg, i)
+						// Use offset to prevent collisions between multiple clients
+						actualID := *offset + i
+						cmd := fmt.Sprintf("SET %d %s_%d\r\n", actualID, baseMsg, actualID)
 						bytesSent += int64(len(cmd))
 
 						if _, err := cliWriter.WriteString(cmd); err != nil {

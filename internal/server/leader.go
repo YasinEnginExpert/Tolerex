@@ -42,6 +42,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -83,6 +84,10 @@ type LeaderServer struct {
 	// Optional function hooks for testing overrides.
 	dialFn      func(addr string) (*grpc.ClientConn, error)
 	replicateFn func(ctx context.Context, addr string, msg *pb.StoredMessage) bool
+
+	// --- CONNECTION POOL ---
+	conns   map[string]*grpc.ClientConn
+	connsMu sync.Mutex
 
 	// --- RUNTIME LISTENERS ---
 	TcpListener  net.Listener // Operator TCP console
@@ -215,6 +220,7 @@ func NewLeaderServer(members []string, toleranceFile string) (*LeaderServer, err
 		MsgMap:    make(map[int][]string),
 		MemberLog: memberLog,
 		Balancer:  &LeastLoadedBalancer{},
+		conns:     make(map[string]*grpc.ClientConn),
 	}
 
 	// Default load balancer (moved out of leader.go)
@@ -295,17 +301,40 @@ func (s *LeaderServer) dialMember(addr string) (*grpc.ClientConn, error) {
 		return s.dialFn(addr)
 	}
 
-	logger.Debug(logger.Leader, "Dialing member %s with mTLS", addr)
+	s.connsMu.Lock()
+	defer s.connsMu.Unlock()
+
+	// 1. Check if a valid connection exists
+	if conn, ok := s.conns[addr]; ok {
+		// Verify if state is shutdown/transient failure?
+		// gRPC usually handles transient reconnection automatically.
+		// Only remove if it's explicitly Shutdown or closed.
+		if conn.GetState() != connectivity.Shutdown {
+			return conn, nil
+		}
+		// If shutdown, fallthrough to dial new one
+		delete(s.conns, addr)
+	}
+
+	logger.Debug(logger.Leader, "Dialing member %s with mTLS (New Connection)", addr)
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
 
-	return grpc.DialContext(
+	conn, err := grpc.DialContext(
 		ctx,
 		addr,
 		s.memberDialOpt,
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(),
 	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Add to pool
+	s.conns[addr] = conn
+	return conn, nil
 }
 
 // ===================================================================================
@@ -364,42 +393,66 @@ func (s *LeaderServer) Store(ctx context.Context, msg *pb.StoredMessage) (*pb.St
 
 	logger.Debug(log, "Replication targets selected: %v", selected)
 
-	successful := make([]string, 0, tol)
+	// --- CONCURRENT REPLICATION ---
+	var wg sync.WaitGroup
+	results := make(chan string, len(selected))
+
+	// We need 'tol' successes. If we get them, we are good.
+	// We'll launch all attempts in parallel.
 
 	for _, addr := range selected {
-		var success bool
+		wg.Add(1)
+		go func(targetAddr string) {
+			defer wg.Done()
 
-		if s.replicateFn != nil {
-			logger.Debug(log, "Using test replicateFn for member %s", addr)
-			success = s.replicateFn(ctx, addr, msg)
-		} else {
-			conn, err := s.dialMember(addr)
-			if err != nil {
-				logger.Warn(log, "Connection error to %s: %v", addr, err)
-				continue
-			}
-
-			client := pb.NewStorageServiceClient(conn)
-			ctx2, cancel := context.WithTimeout(ctx, rpcTimeout)
-			res, callErr := client.Store(ctx2, msg)
-			cancel()
-			conn.Close()
-
-			if callErr == nil && res != nil && res.Ok {
-				logger.Info(log, "Replication succeeded: msg_id=%d member=%s", msg.Id, addr)
-				success = true
+			var success bool
+			if s.replicateFn != nil {
+				logger.Debug(log, "Using test replicateFn for member %s", targetAddr)
+				success = s.replicateFn(ctx, targetAddr, msg)
 			} else {
-				logger.Error(log, "Replication failed: msg_id=%d member=%s err=%v", msg.Id, addr, callErr)
-			}
-		}
+				// Dial (reuses connection)
+				conn, err := s.dialMember(targetAddr)
+				if err != nil {
+					logger.Warn(log, "Connection error to %s: %v", targetAddr, err)
+					return
+				}
 
-		if success {
-			successful = append(successful, addr)
-			if len(successful) == tol {
-				logger.Debug(log, "Required replication count achieved: %d", tol)
-				break
+				// Do NOT close conn here, it is pooled.
+
+				client := pb.NewStorageServiceClient(conn)
+				ctx2, cancel := context.WithTimeout(ctx, rpcTimeout)
+				res, callErr := client.Store(ctx2, msg)
+				cancel()
+
+				if callErr == nil && res != nil && res.Ok {
+					logger.Debug(log, "Replication succeeded: msg_id=%d member=%s", msg.Id, targetAddr)
+					success = true
+				} else {
+					logger.Error(log, "Replication failed: msg_id=%d member=%s err=%v", msg.Id, targetAddr, callErr)
+				}
 			}
-		}
+
+			if success {
+				results <- targetAddr
+			}
+		}(addr)
+	}
+
+	// Close results channel once all goroutines are done
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	successful := make([]string, 0, tol)
+	for addr := range results {
+		successful = append(successful, addr)
+		// Optimization: If we have enough, we could break?
+		// But we need to drain channel or wait for wg to avoid leaks if we stop early?
+		// Actually, since we close channel after wg.Wait(), reading until close is safe and correct.
+		// It waits for ALL attempts to finish.
+		// If we want to return EARLY (latency optimization), we'd need a more complex context cancel pattern.
+		// For now, let's wait for all (robustness) but execute in PARALLEL (throughput).
 	}
 
 	// Update state based on replication results.
@@ -475,7 +528,6 @@ func (s *LeaderServer) Retrieve(ctx context.Context, req *pb.MessageID) (*pb.Sto
 		ctx2, cancel := context.WithTimeout(ctx, rpcTimeout)
 		res, callErr := client.Retrieve(ctx2, req)
 		cancel()
-		conn.Close()
 
 		if callErr == nil && res != nil {
 			logger.Info(log, "Retrieve succeeded from %s: msg_id=%d", addr, req.Id)
@@ -732,4 +784,12 @@ func (s *LeaderServer) PrintMemberStats() {
 			info.Address, info.Alive, info.LastSeen.Format("15:04:05"), info.MessageCnt)
 	}
 	fmt.Println("==================================")
+}
+func (s *LeaderServer) CloseAllConns() {
+	s.connsMu.Lock()
+	defer s.connsMu.Unlock()
+	for addr, c := range s.conns {
+		_ = c.Close()
+		delete(s.conns, addr)
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ===================================================================================
@@ -101,7 +102,7 @@ func main() {
 		"no",
 	)
 
-	// Yeni client için CSV seçeneği
+	// CSV Option for clients
 	csvMode := "no"
 	if measureMode == "yes" {
 		csvMode = askChoice(
@@ -115,13 +116,10 @@ func main() {
 		baseDir         = "D:\\Tolerex"
 		startGrpcPort   = 5556
 		startMetricPort = 9092
-
-		// Yeni test_client.go TCP addr flag’i için:
-		// (Leader TCP control-plane hangi porttaysa onu yaz)
-		leaderTCPAddr = "localhost:6666"
+		leaderTCPAddr   = "localhost:6666"
 	)
 
-	// measured klasörünü garanti oluştur
+	// Ensure measured directory exists
 	measuredDir := filepath.Join(baseDir, "measured")
 	_ = os.MkdirAll(measuredDir, 0755)
 
@@ -180,15 +178,19 @@ func main() {
 	waitEnter("Press ENTER once all Members are ready...")
 
 	// -------------------------------------------------------------------------------
-	// Start Client (LOCAL) - NEW test_client.go compatible
+	// Start Client (LOCAL) - UPDATED for compatibility
 	// -------------------------------------------------------------------------------
 	fmt.Println("Starting Clients...")
 
 	for i := 0; i < clientCount; i++ {
+		clientID := fmt.Sprintf("client-%d", i+1)
+		offset := i * 100_000 // Each client gets 100k distinct ID range
+
 		title := fmt.Sprintf("CLIENT-%d", i+1)
 
-		// Yeni client komutu: -addr, -measure, -csv
-		clientCmd := fmt.Sprintf("go run ./client/test_client.go -addr %s", leaderTCPAddr)
+		// Base command with address
+		// Added -id and -offset flags here to fix compatibility/collision issues
+		clientCmd := fmt.Sprintf("go run ./client/test_client.go -addr %s -id %s -offset %d", leaderTCPAddr, clientID, offset)
 
 		if measureMode == "yes" {
 			clientCmd += " -measure"
@@ -198,9 +200,8 @@ func main() {
 			clientCmd += " -csv"
 			title += " [CSV]"
 
-			// CSV stdout -> dosyaya yönlendir.
-			// stderr (prompt/loglar) terminalde kalır, CSV temiz olur.
-			csvFile := fmt.Sprintf(".\\measured\\client-%02d.csv", i+1)
+			// Redirect CSV output to file
+			csvFile := fmt.Sprintf(".\\measured\\%s.csv", clientID)
 			clientCmd += fmt.Sprintf(" > %s", csvFile)
 		}
 
@@ -212,6 +213,8 @@ func main() {
 				clientCmd,
 			),
 		)
+
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	fmt.Println("\nCluster successfully started.")
