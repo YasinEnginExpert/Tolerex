@@ -77,7 +77,7 @@ services:
       - tolerex-net
     volumes:
       - member3-data:/root/internal/data
-
+      
   # ========================================
   # MONITORING STACK
   # ========================================

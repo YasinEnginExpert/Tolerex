@@ -1,4 +1,0 @@
-go test ./internal/storage -v
-
-go test ./internal/storage -bench=Write -benchmem -count=5 >> internal/storage/test_benchmark/storage_write.txt
-

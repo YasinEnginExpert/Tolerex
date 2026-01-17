@@ -1,0 +1,7 @@
+The quick brown fox jumps over the lazy dog.
+1234567890!@#$%^&*()
+Tolerex Performance Test Case 001.
+Replication factor: 4.
+Total Members: 30.
+Load Balancer: Power of Two Choices.
+Status: Operational.

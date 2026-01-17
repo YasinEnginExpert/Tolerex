@@ -1,4 +1,4 @@
-# Server Package (`internal/server`) 🧠
+# Server Package (`internal/server`) 
 
 This package contains the core business logic of the Tolerex distributed system. It implements the "Control Plane" (Leader) and "Data Plane" (Member) logic.
 
@@ -31,7 +31,7 @@ Decides where to store data.
   - The `LeastLoaded` strategy correctly sorts and picks the best candidates.
   - The `P2C` strategy returns valid subsets of members.
 
-## Running Tests 🚀
+## Running Tests 
 
 To run the tests for this package (Leader, Member, Balancer), execute the following command from the project root:
 

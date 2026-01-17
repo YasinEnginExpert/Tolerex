@@ -43,7 +43,7 @@ import (
 	"tolerex/internal/metrics"
 	"tolerex/internal/middleware"
 	"tolerex/internal/security"
-	"tolerex/internal/server"
+	"tolerex/internal/server/leader"
 	proto "tolerex/proto/gen"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -116,7 +116,7 @@ func main() {
 	//   - Store / Retrieve orchestration
 	//   - Cluster metadata persistence
 
-	leader, err := server.NewLeaderServer(initialMembers, confPath)
+	leaderSrv, err := leader.NewLeaderServer(initialMembers, confPath)
 	if err != nil {
 		logger.Fatal(log, "Leader initialization failed: %v", err)
 	}
@@ -132,7 +132,7 @@ func main() {
 	//
 	// This runs independently of the gRPC server.
 
-	leader.StartHeartbeatWatcher()
+	leaderSrv.StartHeartbeatWatcher()
 
 	// -------------------------------------------------------------------------------
 	// gRPC SERVER (DATA PLANE – mTLS PROTECTED)
@@ -178,7 +178,7 @@ func main() {
 		)
 
 		// Bind LeaderServer implementation to the gRPC service definition.
-		proto.RegisterStorageServiceServer(grpcServer, leader)
+		proto.RegisterStorageServiceServer(grpcServer, leaderSrv)
 
 		logger.Info(log, "Leader gRPC server listening on %s", grpcPort)
 
@@ -214,7 +214,7 @@ func main() {
 				continue
 			}
 
-			go leader.HandleClient(conn)
+			go leaderSrv.HandleClient(conn)
 		}
 	}()
 
@@ -255,6 +255,6 @@ func main() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		leader.PrintMemberStats()
+		leaderSrv.PrintMemberStats()
 	}
 }

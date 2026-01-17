@@ -697,70 +697,36 @@ The system supports two distinct I/O strategies for disk persistence, configurab
 ---
 
 ## Project Structure
+
 ```text
 .
-├── go.mod
-├── go.sum
-├── LICENSE
-├── README.md
-│
-├── client
-│   └── test_client.go
-│
-├── cmd
-│   ├── cluster_launcher
-│   │   └── cluster_launcher.go
-│   ├── leader
-│   │   └── main.go
-│   └── member
-│       └── main.go
-│
-├── config
-│   ├── tolerance.conf
-│   └── tls
-│       ├── ca.crt
-│       ├── ca.key
-│       ├── client.cnf
-│       ├── client.crt
-│       ├── client.key
-│       ├── leader.cnf
-│       ├── leader.crt
-│       ├── leader.key
-│       ├── member.cnf
-│       ├── member.crt
-│       └── member.key
-│
-├── internal
-│   ├── config
-│   │   └── config.go
-│   ├── data
-│   │   └── leader_state.json
-│   ├── logger
-│   │   └── logger.go
-│   ├── metrics
-│   │   └── metrics.go
-│   ├── middleware
-│   │   ├── interceptors.go
-│   │   ├── logging.go
-│   │   ├── metrics.go
-│   │   └── recovery.go
-│   ├── security
-│   │   └── mtls.go
-│   ├── server
-│   │   ├── leader.go
-│   │   └── member.go
-│   └── storage
-│       ├── reader.go
-│       └── writer.go
-│
-├── logs
-│   └── tolerex.log
-│
-└── proto
-    ├── message.proto
-    └── gen
-        ├── message.pb.go
-        └── message_grpc.pb.go
+├── cmd/
+│   ├── client/             # Interactive test client
+│   ├── launcher/           # Professional cluster launcher
+│   ├── leader/             # Leader server entry point
+│   ├── member/             # Member node entry point
+│   └── report_tool/        # Performance report generator
+├── config/
+│   ├── tls/                # mTLS certificates
+│   └── tolerance.conf      # Replication settings
+├── deploy/
+│   ├── docker-compose.yml  # Monitoring stack
+│   └── manual.md           # Monitoring setup guide
+├── internal/
+│   ├── server/             # Modular server components
+│   │   ├── leader/         # Leader logic
+│   │   ├── member/         # Member logic
+│   │   ├── balancer/       # Balancer strategies
+│   │   ├── shared/         # Common types
+│   │   └── HOWTO.md        # Server operations guide
+│   ├── storage/            # Disk I/O engine
+│   │   └── HOWTO.md        # Storage benchmarking guide
+│   ├── security/           # mTLS implementation
+│   └── logger/             # Structured logging
+├── test_data/
+│   └── samples/            # Numeric sample files (1MB, 2MB, 3MB)
+├── Makefile                # Automation (build, run, clean)
+└── proto/                  # Protobuf definitions and generated code
 ```
 ---
 

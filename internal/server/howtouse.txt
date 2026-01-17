@@ -1,7 +1,0 @@
-go test ./internal/server -v
-go test -race ./internal/server
-
-go test ./internal/server -run TestLeader_CPUProfile
-
-go tool pprof internal/server/leader_cpu.prof
-go tool pprof -http=:8080 internal/server/leader_cpu.prof

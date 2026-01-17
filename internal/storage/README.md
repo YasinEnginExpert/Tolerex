@@ -1,4 +1,4 @@
-# Storage Package (`internal/storage`) 💾
+# Storage Package (`internal/storage`) 
 
 This package acts as the "Storage Engine" for Tolerex, handling all low-level disk I/O operations.
 
@@ -21,7 +21,7 @@ Tests verify the integrity of the filesystem operations.
 - **Overwrite:** Ensures updates to existing IDs work correctly.
 - **Not Found:** Verifies correct error handling for missing files.
 
-## Running Tests 🚀
+## Running Tests 
 
 To run the tests for this package, execute the following command from the project root:
 

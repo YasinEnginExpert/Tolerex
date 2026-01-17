@@ -16,7 +16,7 @@ import (
 	"tolerex/internal/metrics"
 	"tolerex/internal/middleware"
 	"tolerex/internal/security"
-	"tolerex/internal/server"
+	"tolerex/internal/server/member"
 	proto "tolerex/proto/gen"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -281,13 +281,13 @@ func startMemberGRPC(memberLog *log.Logger, port, dataDir, ioMode string) {
 	)
 
 	// Create MemberServer instance (storage worker)
-	member := &server.MemberServer{
+	srv := &member.MemberServer{
 		DataDir: dataDir,
 		IOMode:  ioMode,
 	}
 
 	// Register gRPC service
-	proto.RegisterStorageServiceServer(grpcServer, member)
+	proto.RegisterStorageServiceServer(grpcServer, srv)
 
 	logger.Info(
 		memberLog,
